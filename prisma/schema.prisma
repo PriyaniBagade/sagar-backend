@@ -1,0 +1,7 @@
+// Prisma schema kept for reference only.
+// This project now uses SQLAlchemy (async) + asyncpg.
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}

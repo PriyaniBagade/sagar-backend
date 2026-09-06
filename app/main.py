@@ -3,10 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config.database import engine, Base
 
 # Register all models so create_all picks them up
-import app.models.port          # noqa: F401
-import app.models.vessel_class  # noqa: F401
+import app.models.port           # noqa: F401
+import app.models.vessel_class   # noqa: F401
+import app.models.feature_store  # noqa: F401
+import app.models.forecast       # noqa: F401
 
 from app.routers.vessel_optimization import router as vessel_router
+from app.routers.forecast import router as forecast_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -21,6 +24,7 @@ app.add_middleware(
 )
 
 app.include_router(vessel_router)
+app.include_router(forecast_router)
 
 @app.get("/")
 def root():

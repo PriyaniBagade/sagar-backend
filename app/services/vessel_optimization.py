@@ -2,6 +2,7 @@
 Pure optimization logic — no FastAPI request/response objects here.
 Inputs and outputs are plain Python dicts/dataclasses so this is fully unit-testable.
 """
+
 import math
 from dataclasses import dataclass, field
 from typing import Optional
@@ -12,7 +13,7 @@ class PortData:
     id: str
     name: str
     country: str
-    port_type: str      # "LOADING" | "DISCHARGE"
+    port_type: str  # "LOADING" | "DISCHARGE"
     max_draft: Optional[float]
     max_loa: Optional[float]
     max_beam: Optional[float]
@@ -35,7 +36,7 @@ class OptimizationResult:
     recommended_class: str
     voyages_needed: int
     eligible_classes: list[str]
-    rejected_classes: list[dict]   # {"vessel_class": str, "rejection_reason": str}
+    rejected_classes: list[dict]  # {"vessel_class": str, "rejection_reason": str}
     warnings: list[str]
 
 
@@ -44,19 +45,29 @@ class OptimizationResult:
 # the optimization logic below.
 # ---------------------------------------------------------------------------
 
-def stub_freight_rate_per_voyage(vessel: VesselClassData, loading_port: PortData, discharge_port: PortData) -> float:
+
+def stub_freight_rate_per_voyage(
+    vessel: VesselClassData, loading_port: PortData, discharge_port: PortData
+) -> float:
     """Placeholder — will be replaced by the freight-rate forecasting module (P2)."""
     return 0.0
 
-def stub_handling_cost(vessel: VesselClassData, cargo_qty: float, discharge_port: PortData) -> float:
+
+def stub_handling_cost(
+    vessel: VesselClassData, cargo_qty: float, discharge_port: PortData
+) -> float:
     """Placeholder — will be replaced by port-cost module (P4)."""
     return 0.0
+
 
 def stub_congestion_risk(vessel: VesselClassData, discharge_port: PortData) -> float:
     """Placeholder — will be replaced by congestion-scoring module."""
     return 0.0
 
-def stub_demurrage_estimate(vessel: VesselClassData, loading_port: PortData, discharge_port: PortData) -> float:
+
+def stub_demurrage_estimate(
+    vessel: VesselClassData, loading_port: PortData, discharge_port: PortData
+) -> float:
     """Placeholder — will be replaced by demurrage model."""
     return 0.0
 
@@ -64,6 +75,7 @@ def stub_demurrage_estimate(vessel: VesselClassData, loading_port: PortData, dis
 # ---------------------------------------------------------------------------
 # Main optimization function
 # ---------------------------------------------------------------------------
+
 
 def optimize_vessel(
     loading_port: PortData,
@@ -103,8 +115,12 @@ def optimize_vessel(
         reasons = []
 
         # Draft check
-        lp_draft_ok = loading_port.max_draft is None or v.draft <= loading_port.max_draft
-        dp_draft_ok = discharge_port.max_draft is None or v.draft <= discharge_port.max_draft
+        lp_draft_ok = (
+            loading_port.max_draft is None or v.draft <= loading_port.max_draft
+        )
+        dp_draft_ok = (
+            discharge_port.max_draft is None or v.draft <= discharge_port.max_draft
+        )
 
         if not lp_draft_ok:
             reasons.append(
@@ -148,15 +164,19 @@ def optimize_vessel(
                 )
 
         if reasons:
-            rejected.append({
-                "vessel_class": v.vessel_class,
-                "rejection_reason": f"{v.vessel_class} rejected: {'; '.join(reasons)}",
-            })
+            rejected.append(
+                {
+                    "vessel_class": v.vessel_class,
+                    "rejection_reason": f"{v.vessel_class} rejected: {'; '.join(reasons)}",
+                }
+            )
         else:
             eligible.append(v)
 
     if not eligible:
-        raise ValueError("No vessel class can physically serve this route with the given constraints.")
+        raise ValueError(
+            "No vessel class can physically serve this route with the given constraints."
+        )
 
     # ------------------------------------------------------------------
     # Filter 2 — Capacity (voyages needed per vessel class)

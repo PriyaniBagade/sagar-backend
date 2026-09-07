@@ -3,21 +3,32 @@ from sqlalchemy.orm import Session
 from app.config.database import get_db
 from app.models.port import Port
 from app.models.vessel_class import VesselClass
-from app.schemas.vessel_optimization import VesselOptimizationRequest, VesselOptimizationResponse, RejectedClass
+from app.schemas.vessel_optimization import (
+    VesselOptimizationRequest,
+    VesselOptimizationResponse,
+    RejectedClass,
+)
 from app.services.vessel_optimization import optimize_vessel, PortData, VesselClassData
 
 router = APIRouter(prefix="/api", tags=["Vessel Optimization"])
 
 
 @router.post("/vessel-optimization", response_model=VesselOptimizationResponse)
-def vessel_optimization(payload: VesselOptimizationRequest, db: Session = Depends(get_db)):
+def vessel_optimization(
+    payload: VesselOptimizationRequest, db: Session = Depends(get_db)
+):
     loading_port = db.query(Port).filter(Port.id == payload.loading_port_id).first()
     discharge_port = db.query(Port).filter(Port.id == payload.discharge_port_id).first()
 
     if not loading_port:
-        raise HTTPException(status_code=404, detail=f"Loading port {payload.loading_port_id} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Loading port {payload.loading_port_id} not found"
+        )
     if not discharge_port:
-        raise HTTPException(status_code=404, detail=f"Discharge port {payload.discharge_port_id} not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Discharge port {payload.discharge_port_id} not found",
+        )
 
     vessel_classes = db.query(VesselClass).all()
 

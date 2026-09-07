@@ -3,6 +3,7 @@ Pydantic schemas — one per scraper source.
 These are the canonical contracts between scrapers and the feature store.
 If a scraper's output doesn't match, it gets quarantined here, not silently used.
 """
+
 from datetime import date
 from typing import Optional
 from pydantic import BaseModel, Field, field_validator
@@ -10,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class BDIRow(BaseModel):
     """Output of scraper.py — handybulk.com/baltic-dry-index"""
+
     date: date
     bdi: Optional[float] = Field(None, gt=0)
     bdi_change: Optional[float] = None
@@ -31,6 +33,7 @@ class BunkerRow(BaseModel):
     """Output of bunker_scraper.py — handybulk.com/ship-bunker
     Only the global average VLSFO is required; port-level fields are optional.
     """
+
     date: date
     vlsfo_price_usd: float = Field(..., gt=0, lt=5000)  # global avg VLSFO $/mt
     mgo_price_usd: Optional[float] = Field(None, gt=0, lt=10000)
@@ -38,24 +41,28 @@ class BunkerRow(BaseModel):
 
 class CokingCoalRow(BaseModel):
     """Output of coking_coal_daily.py or coking_coal_scraper.py"""
+
     date: date
     coking_coal_price_usd: float = Field(..., gt=50, lt=1500)  # $/t, plausible range
 
 
 class SteelProductionRow(BaseModel):
     """Output of steel_production_scraper.py — steel.gov.in cumulative Mt"""
-    date: date                              # first day of report month
+
+    date: date  # first day of report month
     steel_production_mt: float = Field(..., gt=0, lt=200)  # cumulative FY Mt
 
 
 class ManufacturingPMIRow(BaseModel):
     """Output of manufacturing_pmi_scraper.py — J.P.Morgan Global Mfg PMI"""
-    date: date                              # first day of report month
+
+    date: date  # first day of report month
     manufacturing_pmi: float = Field(..., gt=30, lt=70)
 
 
 class CycloneRow(BaseModel):
     """Output of cyclone.py — GDACS API"""
+
     date: date
     cyclone_india_flag: int = Field(..., ge=0, le=1)
     cyclone_india_days: int = Field(..., ge=0)
@@ -65,6 +72,7 @@ class CycloneRow(BaseModel):
 
 class RainfallRow(BaseModel):
     """Output of rainfall.py — Open-Meteo API"""
+
     date: date
     rainfall_paradip_mm: float = Field(..., ge=0)
     rainfall_vizag_mm: float = Field(..., ge=0)
@@ -75,9 +83,10 @@ class RainfallRow(BaseModel):
 
 class GeoDisruptionRow(BaseModel):
     """Output of global_disruption.py — chokepoint AIS traffic scores"""
+
     date: date
     geo_flag: int = Field(..., ge=0, le=1)
-    geo_severity: float = Field(..., ge=0, le=1)   # normalised 0-1
+    geo_severity: float = Field(..., ge=0, le=1)  # normalised 0-1
     geo_days_active: int = Field(..., ge=0)
 
     @field_validator("geo_severity")
@@ -90,6 +99,7 @@ class GeoDisruptionRow(BaseModel):
 
 class MalaccaRow(BaseModel):
     """Output of malacca_traffic_scraper.py — IMF PortWatch ArcGIS"""
+
     date: date
     malacca_dry_bulk_calls: int = Field(..., ge=0)
     malacca_dry_bulk_capacity: float = Field(..., ge=0)  # DWT
@@ -97,6 +107,7 @@ class MalaccaRow(BaseModel):
 
 class PortActivityRow(BaseModel):
     """Output of port_activity_scraper.py — IMF PortWatch Daily_Ports_Data"""
+
     date: date
     total_port_calls: int = Field(..., ge=0)
     total_port_volume: float = Field(..., ge=0)  # sum of import+export dry bulk
@@ -104,6 +115,7 @@ class PortActivityRow(BaseModel):
 
 class SeasonalityRow(BaseModel):
     """Derived — no network call"""
+
     date: date
     month: int = Field(..., ge=1, le=12)
     is_monsoon_season: int = Field(..., ge=0, le=1)

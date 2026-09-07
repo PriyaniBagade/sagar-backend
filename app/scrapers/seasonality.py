@@ -1,6 +1,7 @@
 """
 Seasonality adapter — derived, no network call.
 """
+
 import datetime
 from app.scrapers.base import ScraperResult
 from app.schemas.sources import SeasonalityRow

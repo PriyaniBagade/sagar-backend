@@ -9,6 +9,7 @@ Run manually or on a weekly/monthly schedule.
 Usage:
     python -m app.jobs.retrain
 """
+
 import logging
 import shutil
 from pathlib import Path
@@ -27,33 +28,76 @@ from app.services.freight_prediction import _feature_cols, MODELS_DIR
 
 log = logging.getLogger(__name__)
 
-HOLDOUT_DAYS = 30   # last 30 days used for eval, rest for training
+HOLDOUT_DAYS = 30  # last 30 days used for eval, rest for training
 MIN_TRAIN_ROWS = 60
 
 
 def _load_dataset(db: Session) -> pd.DataFrame:
     rows = db.query(FeatureStoreRow).order_by(FeatureStoreRow.date).all()
-    actuals = {
-        (a.date, a.index): a.actual
-        for a in db.query(ForecastActual).all()
-    }
+    actuals = {(a.date, a.index): a.actual for a in db.query(ForecastActual).all()}
 
     records = []
     for r in rows:
-        base = {col: getattr(r, col, None) for col in [
-            "date", "bdi", "bci", "bpi", "bsi",
-            "bdi_lag_1", "bdi_lag_7", "bdi_lag_30", "bdi_roll7_mean", "bdi_roll7_std", "bdi_roll30_mean", "bdi_roll30_std",
-            "bci_lag_1", "bci_lag_7", "bci_lag_30", "bci_roll7_mean", "bci_roll7_std", "bci_roll30_mean", "bci_roll30_std",
-            "bpi_lag_1", "bpi_lag_7", "bpi_lag_30", "bpi_roll7_mean", "bpi_roll7_std", "bpi_roll30_mean", "bpi_roll30_std",
-            "bsi_lag_1", "bsi_lag_7", "bsi_lag_30", "bsi_roll7_mean", "bsi_roll7_std", "bsi_roll30_mean", "bsi_roll30_std",
-            "month", "is_monsoon_season",
-            "total_port_calls", "total_port_volume",
-            "malacca_dry_bulk_calls", "malacca_dry_bulk_capacity",
-            "vlsfo_price_usd", "coking_coal_price_usd", "manufacturing_pmi", "steel_production_mt",
-            "geo_flag", "geo_severity", "geo_days_active",
-            "cyclone_india_flag", "cyclone_india_days", "cyclone_australia_flag", "cyclone_australia_days",
-            "rainfall_paradip_mm", "rainfall_vizag_mm", "rainfall_haldia_mm", "rainfall_hay_point_mm", "rainfall_indonesia_mm",
-        ]}
+        base = {
+            col: getattr(r, col, None)
+            for col in [
+                "date",
+                "bdi",
+                "bci",
+                "bpi",
+                "bsi",
+                "bdi_lag_1",
+                "bdi_lag_7",
+                "bdi_lag_30",
+                "bdi_roll7_mean",
+                "bdi_roll7_std",
+                "bdi_roll30_mean",
+                "bdi_roll30_std",
+                "bci_lag_1",
+                "bci_lag_7",
+                "bci_lag_30",
+                "bci_roll7_mean",
+                "bci_roll7_std",
+                "bci_roll30_mean",
+                "bci_roll30_std",
+                "bpi_lag_1",
+                "bpi_lag_7",
+                "bpi_lag_30",
+                "bpi_roll7_mean",
+                "bpi_roll7_std",
+                "bpi_roll30_mean",
+                "bpi_roll30_std",
+                "bsi_lag_1",
+                "bsi_lag_7",
+                "bsi_lag_30",
+                "bsi_roll7_mean",
+                "bsi_roll7_std",
+                "bsi_roll30_mean",
+                "bsi_roll30_std",
+                "month",
+                "is_monsoon_season",
+                "total_port_calls",
+                "total_port_volume",
+                "malacca_dry_bulk_calls",
+                "malacca_dry_bulk_capacity",
+                "vlsfo_price_usd",
+                "coking_coal_price_usd",
+                "manufacturing_pmi",
+                "steel_production_mt",
+                "geo_flag",
+                "geo_severity",
+                "geo_days_active",
+                "cyclone_india_flag",
+                "cyclone_india_days",
+                "cyclone_australia_flag",
+                "cyclone_australia_days",
+                "rainfall_paradip_mm",
+                "rainfall_vizag_mm",
+                "rainfall_haldia_mm",
+                "rainfall_hay_point_mm",
+                "rainfall_indonesia_mm",
+            ]
+        }
         for idx in ("bdi", "bci", "bpi", "bsi"):
             base[f"actual_{idx}"] = actuals.get((r.date, idx), base.get(idx))
         records.append(base)
@@ -84,7 +128,11 @@ def run_retrain() -> dict:
     try:
         df = _load_dataset(db)
         if len(df) < MIN_TRAIN_ROWS + HOLDOUT_DAYS:
-            log.warning("Not enough data for retraining (%d rows). Need %d.", len(df), MIN_TRAIN_ROWS + HOLDOUT_DAYS)
+            log.warning(
+                "Not enough data for retraining (%d rows). Need %d.",
+                len(df),
+                MIN_TRAIN_ROWS + HOLDOUT_DAYS,
+            )
             return {"error": "insufficient data"}
 
         df = df.sort_values("date").reset_index(drop=True)
@@ -96,7 +144,9 @@ def run_retrain() -> dict:
 
             sub = df[feat_cols + [target_col, "date"]].dropna(subset=[target_col])
             if len(sub) < MIN_TRAIN_ROWS + HOLDOUT_DAYS:
-                log.warning("Skipping %s — not enough rows with actuals (%d)", idx, len(sub))
+                log.warning(
+                    "Skipping %s — not enough rows with actuals (%d)", idx, len(sub)
+                )
                 continue
 
             train = sub.iloc[:-HOLDOUT_DAYS]
@@ -131,9 +181,16 @@ def run_retrain() -> dict:
                     shutil.copy(current_path, archive)
                 joblib.dump(new_model, current_path)
                 promoted = True
-                log.info("Promoted new %s model — MAE %.1f < %.1f", idx, new_mae, curr_mae)
+                log.info(
+                    "Promoted new %s model — MAE %.1f < %.1f", idx, new_mae, curr_mae
+                )
             else:
-                log.info("Kept existing %s model — new MAE %.1f >= current %.1f", idx, new_mae, curr_mae)
+                log.info(
+                    "Kept existing %s model — new MAE %.1f >= current %.1f",
+                    idx,
+                    new_mae,
+                    curr_mae,
+                )
 
             results[idx] = {
                 "new_mae": round(new_mae, 2),

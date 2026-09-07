@@ -2,6 +2,7 @@
 Bunker fuel scraper adapter — extracts Global Average VLSFO from handybulk.com/ship-bunker
 and validates against BunkerRow.
 """
+
 import re
 import datetime
 import requests
@@ -74,7 +75,9 @@ def run() -> ScraperResult:
                 break
 
         if vlsfo is None:
-            return ScraperResult.failure("bunker", "Global Average VLSFO price not found in tables")
+            return ScraperResult.failure(
+                "bunker", "Global Average VLSFO price not found in tables"
+            )
 
         row = BunkerRow(date=dt, vlsfo_price_usd=vlsfo, mgo_price_usd=mgo)
         return ScraperResult.success("bunker", row)
@@ -82,4 +85,6 @@ def run() -> ScraperResult:
     except (requests.RequestException, RuntimeError) as e:
         return ScraperResult.failure("bunker", str(e))
     except ValidationError as e:
-        return ScraperResult.failure("bunker", f"schema validation failed: {e}", rows_quarantined=1)
+        return ScraperResult.failure(
+            "bunker", f"schema validation failed: {e}", rows_quarantined=1
+        )

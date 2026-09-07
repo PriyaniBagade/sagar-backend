@@ -6,6 +6,7 @@ Run after ingest completes each day.
 This is what turns raw daily BDI/BCI/BPI/BSI values into the 29-column
 contract the four LightGBM models expect.
 """
+
 import logging
 import pandas as pd
 from sqlalchemy.orm import Session
@@ -22,17 +23,19 @@ def build_features() -> None:
     try:
         rows = db.query(FeatureStoreRow).order_by(FeatureStoreRow.date).all()
         if len(rows) < 31:
-            log.warning("Only %d rows in feature store — lags/rolls will be sparse", len(rows))
+            log.warning(
+                "Only %d rows in feature store — lags/rolls will be sparse", len(rows)
+            )
 
         # build a DataFrame from the raw index values
         records = [
             {
                 "date": r.date,
-                "id":   r.id,
-                "bdi":  r.bdi,
-                "bci":  r.bci,
-                "bpi":  r.bpi,
-                "bsi":  r.bsi,
+                "id": r.id,
+                "bdi": r.bdi,
+                "bci": r.bci,
+                "bpi": r.bpi,
+                "bsi": r.bsi,
             }
             for r in rows
         ]
@@ -40,12 +43,12 @@ def build_features() -> None:
 
         for idx in INDICES:
             col = df[idx].astype(float)
-            df[f"{idx}_lag_1"]      = col.shift(1)
-            df[f"{idx}_lag_7"]      = col.shift(7)
-            df[f"{idx}_lag_30"]     = col.shift(30)
+            df[f"{idx}_lag_1"] = col.shift(1)
+            df[f"{idx}_lag_7"] = col.shift(7)
+            df[f"{idx}_lag_30"] = col.shift(30)
             df[f"{idx}_roll7_mean"] = col.shift(1).rolling(7, min_periods=1).mean()
-            df[f"{idx}_roll7_std"]  = col.shift(1).rolling(7, min_periods=2).std()
-            df[f"{idx}_roll30_mean"]= col.shift(1).rolling(30, min_periods=1).mean()
+            df[f"{idx}_roll7_std"] = col.shift(1).rolling(7, min_periods=2).std()
+            df[f"{idx}_roll30_mean"] = col.shift(1).rolling(30, min_periods=1).mean()
             df[f"{idx}_roll30_std"] = col.shift(1).rolling(30, min_periods=2).std()
 
         # write computed features back
@@ -56,9 +59,13 @@ def build_features() -> None:
                 continue
             for idx in INDICES:
                 for feat in [
-                    f"{idx}_lag_1", f"{idx}_lag_7", f"{idx}_lag_30",
-                    f"{idx}_roll7_mean", f"{idx}_roll7_std",
-                    f"{idx}_roll30_mean", f"{idx}_roll30_std",
+                    f"{idx}_lag_1",
+                    f"{idx}_lag_7",
+                    f"{idx}_lag_30",
+                    f"{idx}_roll7_mean",
+                    f"{idx}_roll7_std",
+                    f"{idx}_roll30_mean",
+                    f"{idx}_roll30_std",
                 ]:
                     val = row_data.get(feat)
                     if pd.notna(val):
@@ -75,6 +82,8 @@ def build_features() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
     build_features()
     print("Feature builder complete.")

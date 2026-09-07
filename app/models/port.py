@@ -19,9 +19,9 @@ class Port(Base):
     type = Column(SAEnum(PortType), nullable=False)
     # Draft modelled as a single static conservative figure (MVP scoping choice —
     # tide-aware/tidal-window adjustments are out of scope for this iteration).
-    max_draft = Column(Float, nullable=True)   # meters; null = unverified
-    max_loa = Column(Float, nullable=True)     # meters; null = unverified
-    max_beam = Column(Float, nullable=True)    # meters; null = unverified
+    max_draft = Column(Float, nullable=True)  # meters; null = unverified
+    max_loa = Column(Float, nullable=True)  # meters; null = unverified
+    max_beam = Column(Float, nullable=True)  # meters; null = unverified
     berths = Column(Integer, nullable=True)
     handling_rate = Column(Float, nullable=True)  # MT/day
     last_verified = Column(Date, nullable=True)

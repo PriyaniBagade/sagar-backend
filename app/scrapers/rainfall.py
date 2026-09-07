@@ -3,6 +3,7 @@ Rainfall scraper adapter — Open-Meteo API.
 Fetches today's precipitation for 5 key port/mining locations.
 Column names match the model's 29-feature contract exactly.
 """
+
 import datetime
 import requests
 from pydantic import ValidationError
@@ -14,11 +15,11 @@ URL = "https://api.open-meteo.com/v1/forecast"
 
 # (lat, lon) matched to the model feature names
 LOCATIONS = {
-    "rainfall_paradip_mm":    (20.2630,  86.6747),   # Paradip port, Odisha
-    "rainfall_vizag_mm":      (17.6868,  83.2185),   # Visakhapatnam port
-    "rainfall_haldia_mm":     (22.0667,  88.0693),   # Haldia dock, West Bengal
-    "rainfall_hay_point_mm":  (-21.2844, 149.3003),  # Hay Point, Queensland
-    "rainfall_indonesia_mm":  (-0.7893,  113.9213),  # Kalimantan (coal mining)
+    "rainfall_paradip_mm": (20.2630, 86.6747),  # Paradip port, Odisha
+    "rainfall_vizag_mm": (17.6868, 83.2185),  # Visakhapatnam port
+    "rainfall_haldia_mm": (22.0667, 88.0693),  # Haldia dock, West Bengal
+    "rainfall_hay_point_mm": (-21.2844, 149.3003),  # Hay Point, Queensland
+    "rainfall_indonesia_mm": (-0.7893, 113.9213),  # Kalimantan (coal mining)
 }
 
 
@@ -50,4 +51,6 @@ def run() -> ScraperResult:
     except requests.RequestException as e:
         return ScraperResult.failure("rainfall", str(e))
     except ValidationError as e:
-        return ScraperResult.failure("rainfall", f"schema validation failed: {e}", rows_quarantined=1)
+        return ScraperResult.failure(
+            "rainfall", f"schema validation failed: {e}", rows_quarantined=1
+        )

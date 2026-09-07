@@ -2,6 +2,7 @@
 Manufacturing PMI scraper adapter — J.P.Morgan Global Manufacturing PMI
 via MTA's monthly writeup (plain HTML, no JS required).
 """
+
 import re
 import datetime
 import requests
@@ -18,8 +19,18 @@ HEADERS = {
 }
 BASE_URL = "https://www.mta.org.uk/resources/purchasing-managers-index-for-manufacturing-{month}-{year}/"
 MONTH_NAMES = [
-    "january", "february", "march", "april", "may", "june",
-    "july", "august", "september", "october", "november", "december",
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
 ]
 
 
@@ -52,21 +63,27 @@ def run() -> ScraperResult:
                 break
 
         if not article_url:
-            return ScraperResult.failure("manufacturing_pmi", "No recent PMI article found on MTA site")
+            return ScraperResult.failure(
+                "manufacturing_pmi", "No recent PMI article found on MTA site"
+            )
 
         # restrict to global section to avoid UK/euro figures
         section_m = re.search(
             r"Global Manufacturing PMI.*?(?=UK manufacturing sector)",
-            page_text, re.IGNORECASE | re.DOTALL,
+            page_text,
+            re.IGNORECASE | re.DOTALL,
         )
         section = section_m.group(0) if section_m else page_text
 
         val_m = re.search(
             r"PMI\s+(?:rose|fell|edged up|edged down|remained unchanged)\s+(?:to|at)\s+(\d+\.\d+)",
-            section, re.IGNORECASE,
+            section,
+            re.IGNORECASE,
         )
         if not val_m:
-            return ScraperResult.failure("manufacturing_pmi", "PMI value pattern not found in article")
+            return ScraperResult.failure(
+                "manufacturing_pmi", "PMI value pattern not found in article"
+            )
 
         pmi = float(val_m.group(1))
         dt = datetime.date(report_year, report_month, 1)
@@ -76,4 +93,6 @@ def run() -> ScraperResult:
     except requests.RequestException as e:
         return ScraperResult.failure("manufacturing_pmi", str(e))
     except ValidationError as e:
-        return ScraperResult.failure("manufacturing_pmi", f"schema validation failed: {e}", rows_quarantined=1)
+        return ScraperResult.failure(
+            "manufacturing_pmi", f"schema validation failed: {e}", rows_quarantined=1
+        )

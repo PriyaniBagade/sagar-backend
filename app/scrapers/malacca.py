@@ -2,6 +2,7 @@
 Malacca Strait traffic scraper adapter — IMF PortWatch ArcGIS FeatureServer.
 Extracts dry bulk vessel calls and capacity for the latest available date.
 """
+
 import datetime
 import requests
 from pydantic import ValidationError
@@ -32,7 +33,9 @@ def run() -> ScraperResult:
 
         features = data.get("features", [])
         if not features:
-            return ScraperResult.failure("malacca", "No features returned from PortWatch API")
+            return ScraperResult.failure(
+                "malacca", "No features returned from PortWatch API"
+            )
 
         a = features[0]["attributes"]
 
@@ -43,9 +46,14 @@ def run() -> ScraperResult:
         raw_date = a["date"]
         if isinstance(raw_date, (int, float)):
             from datetime import timezone
-            dt = datetime.datetime.fromtimestamp(raw_date / 1000, tz=timezone.utc).date()
+
+            dt = datetime.datetime.fromtimestamp(
+                raw_date / 1000, tz=timezone.utc
+            ).date()
         else:
-            dt = datetime.datetime.fromisoformat(str(raw_date).replace("Z", "+00:00")).date()
+            dt = datetime.datetime.fromisoformat(
+                str(raw_date).replace("Z", "+00:00")
+            ).date()
 
         row = MalaccaRow(
             date=dt,
@@ -57,4 +65,6 @@ def run() -> ScraperResult:
     except requests.RequestException as e:
         return ScraperResult.failure("malacca", str(e))
     except ValidationError as e:
-        return ScraperResult.failure("malacca", f"schema validation failed: {e}", rows_quarantined=1)
+        return ScraperResult.failure(
+            "malacca", f"schema validation failed: {e}", rows_quarantined=1
+        )

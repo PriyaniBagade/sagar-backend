@@ -3,6 +3,7 @@ Coking coal scraper adapter.
 Primary source: tradingeconomics.com (daily, via coking_coal_daily logic).
 Fallback: steel.gov.in PDF (monthly, via coking_coal_scraper logic).
 """
+
 import re
 import calendar
 import datetime
@@ -28,11 +29,12 @@ PLAUSIBLE_RANGE = (80, 700)
 MONTHS_IDX = {m.lower(): i for i, m in enumerate(calendar.month_name) if m}
 MONTH_YEAR_RE = re.compile(
     r"(January|February|March|April|May|June|July|August|September|October|November|December)"
-    r"\.?,?\s*-?\s*(\d{4})", re.IGNORECASE
+    r"\.?,?\s*-?\s*(\d{4})",
+    re.IGNORECASE,
 )
 META_RE = re.compile(
     r'name=["\']description["\'][^>]*content=["\']Coking Coal (?:rose to|fell to|traded flat at)?\s*'
-    r'([\d,]+\.?\d*)\s*USD/T on ([A-Za-z]+ \d{1,2},? \d{4})',
+    r"([\d,]+\.?\d*)\s*USD/T on ([A-Za-z]+ \d{1,2},? \d{4})",
     re.IGNORECASE,
 )
 
@@ -75,7 +77,11 @@ def _from_steel_gov() -> tuple[float, datetime.date]:
         month_idx = MONTHS_IDX.get(mm.group(1).lower())
         if not month_idx:
             continue
-        url = a["href"] if a["href"].startswith("http") else requests.compat.urljoin(LISTING_URL, a["href"])
+        url = (
+            a["href"]
+            if a["href"].startswith("http")
+            else requests.compat.urljoin(LISTING_URL, a["href"])
+        )
         candidates.append((int(mm.group(2)), month_idx, url))
 
     if not candidates:
@@ -84,6 +90,7 @@ def _from_steel_gov() -> tuple[float, datetime.date]:
     year, month_idx, pdf_url = candidates[-1]
 
     import pdfplumber
+
     pdf_resp = _fetch(pdf_url)
     pdf_resp.raise_for_status()
     with pdfplumber.open(BytesIO(pdf_resp.content)) as pdf:
@@ -98,7 +105,7 @@ def _from_steel_gov() -> tuple[float, datetime.date]:
         if not anchors or min(abs(mm.start() - a) for a in anchors) > 5000:
             continue
         if len(digits) % 3 == 0:
-            vals = [int(digits[i:i+3]) for i in range(0, len(digits), 3)]
+            vals = [int(digits[i : i + 3]) for i in range(0, len(digits), 3)]
             vals = [v for v in vals if PLAUSIBLE_RANGE[0] <= v <= PLAUSIBLE_RANGE[1]]
             if len(vals) >= 6:
                 price = float(vals[-1])
@@ -120,4 +127,6 @@ def run() -> ScraperResult:
     except (requests.RequestException, RuntimeError) as e:
         return ScraperResult.failure("coking_coal", str(e))
     except ValidationError as e:
-        return ScraperResult.failure("coking_coal", f"schema validation failed: {e}", rows_quarantined=1)
+        return ScraperResult.failure(
+            "coking_coal", f"schema validation failed: {e}", rows_quarantined=1
+        )

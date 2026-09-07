@@ -3,6 +3,7 @@ BDI scraper adapter — wraps the core scraping logic and validates output
 against BDIRow before returning. Any structural mismatch is caught here,
 not silently passed downstream.
 """
+
 import re
 import datetime
 import requests
@@ -86,18 +87,24 @@ def run() -> ScraperResult:
         text = _fetch_text(BASE_URL)
         blocks = _split_into_day_blocks(text)
         if not blocks:
-            return ScraperResult.failure("bdi", "No dated BDI blocks with Baltic content found on page")
+            return ScraperResult.failure(
+                "bdi", "No dated BDI blocks with Baltic content found on page"
+            )
 
         # blocks are in page order (most recent first) — take the first valid one
         raw = _parse_block(*blocks[0])
 
         # must have at least BDI value to be useful
         if raw.get("bdi") is None:
-            return ScraperResult.failure("bdi", f"BDI value not parsed from block dated {raw['date']}")
+            return ScraperResult.failure(
+                "bdi", f"BDI value not parsed from block dated {raw['date']}"
+            )
 
         row = BDIRow(**raw)
         return ScraperResult.success("bdi", row)
     except (requests.RequestException, RuntimeError) as e:
         return ScraperResult.failure("bdi", str(e))
     except ValidationError as e:
-        return ScraperResult.failure("bdi", f"schema validation failed: {e}", rows_quarantined=1)
+        return ScraperResult.failure(
+            "bdi", f"schema validation failed: {e}", rows_quarantined=1
+        )

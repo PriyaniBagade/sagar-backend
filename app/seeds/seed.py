@@ -1,123 +1,141 @@
 """
-Seed script — vessel classes and ports.
-Run with: python -m app.seeds.seed
+Seed script — loads ports from data/Ports Data.xlsx and vessel classes.
+Wipes existing ports + vessel_classes rows first so re-running is safe.
+
+Run with:
+    python -m app.seeds.seed
 """
+
+import re
 from datetime import date
+from pathlib import Path
+import openpyxl
+
 from app.config.database import SessionLocal, engine, Base
 from app.models.port import Port, PortType
 from app.models.vessel_class import VesselClass
 
-# ensure tables exist
 import app.models.port  # noqa
 import app.models.vessel_class  # noqa
+
 Base.metadata.create_all(bind=engine)
+
+DATA_FILE = Path(__file__).parent.parent.parent / "data" / "Ports Data.xlsx"
+
+
+def _parse_draft(raw) -> float | None:
+    """Handle values like 14.5, '14.5/16.50', '13+ tide', 'N/A'."""
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if s.upper() in ("N/A", "N/a", ""):
+        return None
+    # "14.5/16.50" — take the conservative (smaller) value
+    if "/" in s:
+        parts = [p.strip() for p in s.split("/")]
+        nums = []
+        for p in parts:
+            m = re.search(r"[\d.]+", p)
+            if m:
+                nums.append(float(m.group()))
+        return min(nums) if nums else None
+    # "13+ tide" — extract the number
+    m = re.search(r"[\d.]+", s)
+    return float(m.group()) if m else None
+
+
+def _parse_float(raw) -> float | None:
+    """Return float or None for N/A, N/a, text strings."""
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if s.upper() in ("N/A", "N/A", "N/a", ""):
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _parse_int(raw) -> int | None:
+    f = _parse_float(raw)
+    return int(f) if f is not None else None
 
 
 def seed():
     db = SessionLocal()
     try:
-        # Skip if already seeded
-        if db.query(VesselClass).count() > 0:
-            print("Already seeded — skipping.")
-            return
+        # --- wipe existing data ---
+        db.query(Port).delete()
+        db.query(VesselClass).delete()
+        db.commit()
+        print("Cleared existing ports and vessel classes.")
 
-        # --------------------------------------------------------------
-        # Vessel classes
-        # Source: peer-reviewed AIS-tracking dataset (exact figures).
-        # beam null except Panamax (32.3 — canal limit, not confirmed built-beam)
-        # and Capesize (46.5).
-        # --------------------------------------------------------------
+        # --- vessel classes (unchanged from research data) ---
         vessel_classes = [
-            VesselClass(vessel_class="Small Handysize", dwt=11568,  draft=9,  loa=132, beam=None),
-            VesselClass(vessel_class="Large Handysize", dwt=27834,  draft=10, loa=177, beam=None),
-            VesselClass(vessel_class="Handymax",        dwt=54049,  draft=12, loa=227, beam=None),
-            VesselClass(vessel_class="Panamax",         dwt=82618,  draft=12, loa=288, beam=32.3),  # canal-limit, not confirmed built-beam
-            VesselClass(vessel_class="Capesize",        dwt=156000, draft=18, loa=295, beam=46.5),
+            VesselClass(
+                vessel_class="Small Handysize", dwt=11568, draft=9, loa=132, beam=None
+            ),
+            VesselClass(
+                vessel_class="Large Handysize", dwt=27834, draft=10, loa=177, beam=None
+            ),
+            VesselClass(
+                vessel_class="Handymax", dwt=54049, draft=12, loa=227, beam=None
+            ),
+            VesselClass(
+                vessel_class="Panamax", dwt=82618, draft=12, loa=288, beam=32.3
+            ),
+            VesselClass(
+                vessel_class="Capesize", dwt=156000, draft=18, loa=295, beam=46.5
+            ),
         ]
         db.add_all(vessel_classes)
 
-        # --------------------------------------------------------------
-        # Discharge ports — India (fixed by PS text, do not add more)
-        # Draft = one static conservative figure (MVP scoping — no tide-aware logic)
-        # --------------------------------------------------------------
-        discharge_ports = [
-            Port(name="Paradip",                  country="India", type=PortType.DISCHARGE, max_draft=14.5, max_loa=300,  max_beam=48,   last_verified=date.today()),
-            Port(name="Visakhapatnam Outer",       country="India", type=PortType.DISCHARGE, max_draft=18.1, max_loa=390,  max_beam=None, last_verified=date.today()),
-            Port(name="Visakhapatnam Inner",       country="India", type=PortType.DISCHARGE, max_draft=14.5, max_loa=260,  max_beam=None, last_verified=date.today()),
-            Port(name="Gangavaram",                country="India", type=PortType.DISCHARGE, max_draft=18.0, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="Dhamra",                    country="India", type=PortType.DISCHARGE, max_draft=17.5, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="Gopalpur",                  country="India", type=PortType.DISCHARGE, max_draft=14.5, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="Haldia Dock Complex",       country="India", type=PortType.DISCHARGE, max_draft=9.1,  max_loa=None, max_beam=None, last_verified=date.today()),
-            # Sagar-Sandheads: anchorage only — no physical berth constraints applicable
-            Port(name="Sagar-Sandheads",           country="India", type=PortType.DISCHARGE, max_draft=None, max_loa=None, max_beam=None, last_verified=date.today()),
-        ]
-        db.add_all(discharge_ports)
+        # --- ports from xlsx ---
+        wb = openpyxl.load_workbook(DATA_FILE)
+        ws = wb[wb.sheetnames[0]]  # "Ports Data " (note trailing space)
 
-        # --------------------------------------------------------------
-        # Loading ports — Australia
-        # null values are intentional: no figure found in research.
-        # Treat null constraints as "unverified", not as zero/no-limit.
-        # --------------------------------------------------------------
-        loading_ports_australia = [
-            Port(name="Newcastle — PWCS Carrington", country="Australia", type=PortType.LOADING, max_draft=16.5, max_loa=275,  max_beam=47,   last_verified=date.today()),
-            Port(name="Newcastle — NCIG",            country="Australia", type=PortType.LOADING, max_draft=15.2, max_loa=230,  max_beam=32.3, last_verified=date.today()),
-            Port(name="Port Kembla (PKCT)",          country="Australia", type=PortType.LOADING, max_draft=16.2, max_loa=300,  max_beam=50,   last_verified=date.today()),
-            Port(name="Dalrymple Bay (DBCT)",        country="Australia", type=PortType.LOADING, max_draft=None, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="Hay Point (HPCT)",            country="Australia", type=PortType.LOADING, max_draft=None, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="Abbot Point (NQXT)",          country="Australia", type=PortType.LOADING, max_draft=19.1, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="Gladstone — RG Tanna",        country="Australia", type=PortType.LOADING, max_draft=18.8, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="Gladstone — WICET",           country="Australia", type=PortType.LOADING, max_draft=18.8, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="Gladstone — Barney Point",    country="Australia", type=PortType.LOADING, max_draft=15.0, max_loa=None, max_beam=None, last_verified=date.today()),
-        ]
-        db.add_all(loading_ports_australia)
+        ports = []
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            (
+                name,
+                country,
+                port_type_raw,
+                draft_raw,
+                loa_raw,
+                beam_raw,
+                berths_raw,
+                _,
+            ) = row
 
-        # --------------------------------------------------------------
-        # Loading ports — USA
-        # --------------------------------------------------------------
-        loading_ports_usa = [
-            Port(name="Lamberts Point (Norfolk, VA)",                  country="USA", type=PortType.LOADING, max_draft=15.2, max_loa=None, max_beam=53.3, last_verified=date.today()),
-            Port(name="Dominion Terminal Associates (Newport News, VA)",country="USA", type=PortType.LOADING, max_draft=None, max_loa=None, max_beam=53,   last_verified=date.today()),
-            Port(name="Curtis Bay (Baltimore, MD)",                    country="USA", type=PortType.LOADING, max_draft=12.5, max_loa=198,  max_beam=24.7, last_verified=date.today()),
-            Port(name="CONSOL Marine Terminal (Baltimore, MD)",        country="USA", type=PortType.LOADING, max_draft=None, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="McDuffie Terminal (Mobile, AL)",                country="USA", type=PortType.LOADING, max_draft=13.7, max_loa=300,  max_beam=50,   last_verified=date.today()),
-            Port(name="IMT Myrtle Grove (New Orleans, LA)",            country="USA", type=PortType.LOADING, max_draft=18.9, max_loa=304.79,max_beam=45.72,last_verified=date.today()),
-        ]
-        db.add_all(loading_ports_usa)
+            if not name or not port_type_raw:
+                continue
 
-        # --------------------------------------------------------------
-        # Loading ports — Mozambique
-        # --------------------------------------------------------------
-        loading_ports_mozambique = [
-            Port(name="Nacala-a-Velha",           country="Mozambique", type=PortType.LOADING, max_draft=None, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="Beira — direct berth",     country="Mozambique", type=PortType.LOADING, max_draft=8.0,  max_loa=200,  max_beam=None, last_verified=date.today()),
-            Port(name="Beira — offshore anchorage",country="Mozambique", type=PortType.LOADING, max_draft=None, max_loa=220,  max_beam=45,   last_verified=date.today()),
-            Port(name="Matola (Maputo) — TCM",    country="Mozambique", type=PortType.LOADING, max_draft=None, max_loa=None, max_beam=None, last_verified=date.today()),
-        ]
-        db.add_all(loading_ports_mozambique)
+            try:
+                port_type = PortType[port_type_raw.strip().upper()]
+            except KeyError:
+                print(f"  Skipping unknown port type '{port_type_raw}' for {name}")
+                continue
 
-        # --------------------------------------------------------------
-        # Loading ports — Indonesia
-        # Several rows are all-null on dimensions: real, actively-used loading
-        # points confirmed via trade-flow data, but no draft/LOA/beam figure
-        # found in research. Kept as placeholders — null = unverified, not zero.
-        # --------------------------------------------------------------
-        loading_ports_indonesia = [
-            Port(name="Tanjung Bara (KPC)",                  country="Indonesia", type=PortType.LOADING, max_draft=17.25,max_loa=310,  max_beam=50,   last_verified=date.today()),
-            Port(name="Taboneo Anchorage (Banjarmasin)",     country="Indonesia", type=PortType.LOADING, max_draft=19.0, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="Muara Pantai / Berau Anchorage",      country="Indonesia", type=PortType.LOADING, max_draft=18.0, max_loa=289,  max_beam=None, last_verified=date.today()),
-            Port(name="Balikpapan Coal Terminal",            country="Indonesia", type=PortType.LOADING, max_draft=13.0, max_loa=250,  max_beam=43,   last_verified=date.today()),
-            Port(name="Adang Bay Anchorage",                 country="Indonesia", type=PortType.LOADING, max_draft=None, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="Apar Bay Anchorage",                  country="Indonesia", type=PortType.LOADING, max_draft=19.0, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="Tarahan Coal Port (Sumatra)",         country="Indonesia", type=PortType.LOADING, max_draft=None, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="Samarinda Anchorage",                 country="Indonesia", type=PortType.LOADING, max_draft=None, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="Muara Satui Anchorage",               country="Indonesia", type=PortType.LOADING, max_draft=None, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="Bunati Transshipment Anchorage",      country="Indonesia", type=PortType.LOADING, max_draft=None, max_loa=None, max_beam=None, last_verified=date.today()),
-            Port(name="Kotabaru",                            country="Indonesia", type=PortType.LOADING, max_draft=None, max_loa=None, max_beam=None, last_verified=date.today()),
-        ]
-        db.add_all(loading_ports_indonesia)
+            ports.append(
+                Port(
+                    name=str(name).strip(),
+                    country=str(country).strip() if country else "Unknown",
+                    type=port_type,
+                    max_draft=_parse_draft(draft_raw),
+                    max_loa=_parse_float(loa_raw),
+                    max_beam=_parse_float(beam_raw),
+                    berths=_parse_int(berths_raw),
+                    last_verified=date.today(),
+                )
+            )
 
+        db.add_all(ports)
         db.commit()
-        print("Seeded successfully.")
+        print(
+            f"Seeded {len(vessel_classes)} vessel classes and {len(ports)} ports from Ports Data.xlsx."
+        )
+
     except Exception as e:
         db.rollback()
         raise e

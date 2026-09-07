@@ -3,6 +3,7 @@ Geo disruption scraper adapter — IMF PortWatch chokepoint AIS traffic.
 Computes a normalised disruption score (0-1) from traffic deviation.
 Covers Bab el-Mandeb, Suez Canal, Panama Canal.
 """
+
 import datetime
 import statistics
 import time
@@ -40,7 +41,10 @@ def _fetch(params, retries=3, backoff=5):
 
 def _series(portname: str, days: int = 120):
     from datetime import timezone, timedelta
-    since = (datetime.datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    since = (datetime.datetime.now(timezone.utc) - timedelta(days=days)).strftime(
+        "%Y-%m-%d"
+    )
     params = {
         "where": f"portname='{portname}' AND date >= DATE '{since}'",
         "outFields": "date,n_total",
@@ -53,6 +57,7 @@ def _series(portname: str, days: int = 120):
         attrs = f["attributes"]
         raw = attrs["date"]
         from datetime import timezone
+
         if isinstance(raw, (int, float)):
             d = datetime.datetime.fromtimestamp(raw / 1000, tz=timezone.utc).date()
         else:
@@ -69,6 +74,7 @@ def _deviation(series) -> float | None:
         return None
     today = dates[-1]
     from datetime import timedelta
+
     current = [v for d, v in zip(dates, values) if (today - d).days < CURRENT_DAYS]
     bl_start = today - timedelta(days=BASELINE_LOOKBACK)
     bl_end = bl_start - timedelta(days=BASELINE_DAYS)
@@ -98,7 +104,9 @@ def run() -> ScraperResult:
 
         if not deviations:
             # not enough data — safe default: no disruption
-            row = GeoDisruptionRow(date=today, geo_flag=0, geo_severity=0.0, geo_days_active=0)
+            row = GeoDisruptionRow(
+                date=today, geo_flag=0, geo_severity=0.0, geo_days_active=0
+            )
             return ScraperResult.success("geo_disruption", row)
 
         # worst deviation across chokepoints (most negative = worst disruption)

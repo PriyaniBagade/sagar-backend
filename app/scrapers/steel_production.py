@@ -2,6 +2,7 @@
 Steel production scraper adapter — steel.gov.in monthly PDF.
 Returns the latest cumulative finished steel production (Mt) for India.
 """
+
 import re
 import calendar
 import datetime
@@ -53,7 +54,9 @@ def run() -> ScraperResult:
             candidates.append((year, month_idx, full_url))
 
         if not candidates:
-            return ScraperResult.failure("steel_production", "No dated PDF found on steel.gov.in")
+            return ScraperResult.failure(
+                "steel_production", "No dated PDF found on steel.gov.in"
+            )
 
         candidates.sort(reverse=True)
         year, month_idx, pdf_url = candidates[0]
@@ -77,7 +80,7 @@ def run() -> ScraperResult:
             with pdfplumber.open(BytesIO(pdf_resp.content)) as pdf:
                 value = None
                 for page in pdf.pages:
-                    for table in (page.extract_tables() or []):
+                    for table in page.extract_tables() or []:
                         for row in table:
                             row_text = " ".join(cell or "" for cell in row)
                             if "finished steel production" in row_text.lower():
@@ -90,7 +93,9 @@ def run() -> ScraperResult:
                     if value is not None:
                         break
             if value is None:
-                return ScraperResult.failure("steel_production", "Steel production value not found in PDF")
+                return ScraperResult.failure(
+                    "steel_production", "Steel production value not found in PDF"
+                )
 
         dt = datetime.date(year, month_idx, 1)
         row = SteelProductionRow(date=dt, steel_production_mt=value)
@@ -99,4 +104,6 @@ def run() -> ScraperResult:
     except (requests.RequestException, RuntimeError) as e:
         return ScraperResult.failure("steel_production", str(e))
     except ValidationError as e:
-        return ScraperResult.failure("steel_production", f"schema validation failed: {e}", rows_quarantined=1)
+        return ScraperResult.failure(
+            "steel_production", f"schema validation failed: {e}", rows_quarantined=1
+        )

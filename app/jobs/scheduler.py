@@ -8,6 +8,7 @@ Run with:
 
 Keep this process alive (e.g. as a background service or alongside uvicorn).
 """
+
 import logging
 import sys
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -36,7 +37,9 @@ def run_daily_pipeline() -> None:
             log.info("  ingest %-22s %s", source, status)
 
         if failures:
-            log.warning("%d scraper(s) failed, forward-filled: %s", len(failures), failures)
+            log.warning(
+                "%d scraper(s) failed, forward-filled: %s", len(failures), failures
+            )
 
         build_features()
         log.info("=== DAILY PIPELINE COMPLETE ===")
@@ -48,6 +51,7 @@ def run_monthly_retrain() -> None:
     log.info("=== MONTHLY RETRAIN START ===")
     try:
         from app.jobs.retrain import run_retrain
+
         results = run_retrain()
         if "error" in results:
             log.warning("Retrain skipped: %s", results["error"])
@@ -69,9 +73,19 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="SAGAR job scheduler")
-    parser.add_argument("--now", action="store_true", help="Run both jobs immediately and exit (for testing)")
-    parser.add_argument("--daily", action="store_true", help="Run only the daily pipeline now and exit")
-    parser.add_argument("--retrain", action="store_true", help="Run only the monthly retrain now and exit")
+    parser.add_argument(
+        "--now",
+        action="store_true",
+        help="Run both jobs immediately and exit (for testing)",
+    )
+    parser.add_argument(
+        "--daily", action="store_true", help="Run only the daily pipeline now and exit"
+    )
+    parser.add_argument(
+        "--retrain",
+        action="store_true",
+        help="Run only the monthly retrain now and exit",
+    )
     args = parser.parse_args()
 
     if args.now:

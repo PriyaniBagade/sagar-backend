@@ -4,11 +4,16 @@ from typing import Literal, Union
 
 from app.config.database import get_db
 from app.services.freight_prediction import (
-    get_forecast, get_all_forecasts, get_forecast_history, INDICES,
+    get_forecast,
+    get_all_forecasts,
+    get_forecast_history,
+    INDICES,
 )
 from app.jobs.ingest import run_source, SOURCE_RUNNERS
 from app.schemas.freight_prediction import (
-    ForecastResponse, ForecastHistoryItem, IngestResponse,
+    ForecastResponse,
+    ForecastHistoryItem,
+    IngestResponse,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["Freight Forecasting"])
@@ -22,7 +27,9 @@ IndexLiteral = Literal["bdi", "bci", "bpi", "bsi"]
     description="Returns BDI, BCI, BPI, BSI forecasts. Pass `days` for multi-day outlook on all.",
 )
 def forecast_all(
-    days: int = Query(default=1, ge=1, le=30, description="Number of business days ahead"),
+    days: int = Query(
+        default=1, ge=1, le=30, description="Number of business days ahead"
+    ),
     db: Session = Depends(get_db),
 ) -> dict:
     try:
@@ -41,7 +48,9 @@ def forecast_all(
 )
 def forecast_single(
     index: IndexLiteral,
-    days: int = Query(default=1, ge=1, le=30, description="Number of business days to forecast ahead"),
+    days: int = Query(
+        default=1, ge=1, le=30, description="Number of business days to forecast ahead"
+    ),
     db: Session = Depends(get_db),
 ) -> Union[ForecastResponse, list[ForecastResponse]]:
     try:
@@ -68,7 +77,7 @@ def forecast_history(index: IndexLiteral, db: Session = Depends(get_db)):
     "/ingest/{source}",
     response_model=IngestResponse,
     summary="Manually trigger a single scraper (debug aid)",
-    include_in_schema=False,   # hidden from Swagger — internal use only
+    include_in_schema=False,  # hidden from Swagger — internal use only
 )
 def ingest_source(source: str):
     if source not in SOURCE_RUNNERS:

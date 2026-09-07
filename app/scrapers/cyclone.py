@@ -2,6 +2,7 @@
 Cyclone scraper adapter — GDACS API.
 Maps active tropical cyclones to the India/Australia region flags the model needs.
 """
+
 import datetime
 import requests
 from pydantic import ValidationError
@@ -32,7 +33,8 @@ def run() -> ScraperResult:
         data = resp.json()
 
         cyclones = [
-            e for e in data.get("features", [])
+            e
+            for e in data.get("features", [])
             if e["properties"].get("eventtype") == "TC"
         ]
 
@@ -50,7 +52,7 @@ def run() -> ScraperResult:
         row = CycloneRow(
             date=today,
             cyclone_india_flag=1 if india_active > 0 else 0,
-            cyclone_india_days=india_active,       # proxy: count of concurrent events
+            cyclone_india_days=india_active,  # proxy: count of concurrent events
             cyclone_australia_flag=1 if australia_active > 0 else 0,
             cyclone_australia_days=australia_active,
         )
@@ -59,4 +61,6 @@ def run() -> ScraperResult:
     except requests.RequestException as e:
         return ScraperResult.failure("cyclone", str(e))
     except ValidationError as e:
-        return ScraperResult.failure("cyclone", f"schema validation failed: {e}", rows_quarantined=1)
+        return ScraperResult.failure(
+            "cyclone", f"schema validation failed: {e}", rows_quarantined=1
+        )

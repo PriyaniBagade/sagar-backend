@@ -4,8 +4,8 @@ from typing import Optional
 
 class DriverItem(BaseModel):
     factor: str
-    contribution: float   # points pushed up (+) or down (-) on the index
-    direction: str        # "up" | "down"
+    contribution: float  # points pushed up (+) or down (-) on the index
+    direction: str  # "up" | "down"
 
 
 class ForecastResponse(BaseModel):

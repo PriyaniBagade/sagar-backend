@@ -8,6 +8,7 @@ Usage:
 Exit code is 0 if all scrapers succeeded, 1 if any failed (so cron/Task
 Scheduler can alert on failure without you checking logs manually).
 """
+
 import logging
 import sys
 
@@ -28,7 +29,9 @@ def main() -> int:
         print(f"  {source:<22} {status}")
 
     if failures:
-        log.warning("%d scraper(s) failed and were forward-filled: %s", len(failures), failures)
+        log.warning(
+            "%d scraper(s) failed and were forward-filled: %s", len(failures), failures
+        )
 
     log.info("=== Step 2/2: Feature Builder ===")
     build_features()

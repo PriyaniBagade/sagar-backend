@@ -7,9 +7,12 @@ import app.models.port  # noqa: F401
 import app.models.vessel_class  # noqa: F401
 import app.models.feature_store  # noqa: F401
 import app.models.forecast  # noqa: F401
+import app.models.vessel  # noqa: F401
+import app.models.charter_schedule  # noqa: F401
 
 from app.routers.vessel_optimization import router as vessel_router
 from app.routers.forecast import router as forecast_router
+from app.routers.idle import router as idle_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -25,6 +28,7 @@ app.add_middleware(
 
 app.include_router(vessel_router)
 app.include_router(forecast_router)
+app.include_router(idle_router)
 
 
 @app.get("/")

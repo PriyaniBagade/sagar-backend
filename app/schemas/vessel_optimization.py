@@ -1,8 +1,10 @@
 from pydantic import BaseModel, field_validator
+from typing import Optional
 from uuid import UUID
 
 
 class VesselOptimizationRequest(BaseModel):
+    cargo_type: Optional[str] = None  # free-text, e.g. "coking coal", "iron ore"
     loading_port_id: str
     discharge_port_id: str
     cargo_quantity: float  # metric tons
@@ -27,4 +29,4 @@ class VesselOptimizationResponse(BaseModel):
     voyages_needed: int
     eligible_classes: list[str]
     rejected_classes: list[RejectedClass]
-    warnings: list[str]  # e.g. "Beam constraint unverified for Gangavaram"
+    explanation: str  # human-readable reasoning for the recommendation

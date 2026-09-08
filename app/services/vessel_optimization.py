@@ -4,7 +4,7 @@ Inputs and outputs are plain Python dicts/dataclasses so this is fully unit-test
 """
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 
@@ -37,7 +37,7 @@ class OptimizationResult:
     voyages_needed: int
     eligible_classes: list[str]
     rejected_classes: list[dict]  # {"vessel_class": str, "rejection_reason": str}
-    warnings: list[str]
+    explanation: str  # human-readable reasoning
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +87,6 @@ def optimize_vessel(
     congestion_risk_fn=stub_congestion_risk,
     demurrage_fn=stub_demurrage_estimate,
 ) -> OptimizationResult:
-    warnings: list[str] = []
     rejected: list[dict] = []
     eligible: list[VesselClassData] = []
 
@@ -149,11 +148,6 @@ def optimize_vessel(
             lp_beam_unverified = loading_port.max_beam is None
             dp_beam_unverified = discharge_port.max_beam is None
 
-            if lp_beam_unverified:
-                warnings.append(f"Beam constraint unverified for {loading_port.name}")
-            if dp_beam_unverified:
-                warnings.append(f"Beam constraint unverified for {discharge_port.name}")
-
             if not lp_beam_unverified and v.beam > loading_port.max_beam:
                 reasons.append(
                     f"beam {v.beam}m exceeds {loading_port.name}'s {loading_port.max_beam}m limit"
@@ -180,9 +174,16 @@ def optimize_vessel(
 
     # ------------------------------------------------------------------
     # Filter 2 — Capacity (voyages needed per vessel class)
+    # Filter 3 — Cost ranking
+    #
+    # When live cost models are not yet available (all stubs return 0),
+    # we rank by fewest voyages (largest DWT) as the economic tiebreaker:
+    # fewer voyages = less port time, lower aggregate port charges, and
+    # simpler logistics. This avoids always defaulting to the smallest
+    # eligible vessel.
     # ------------------------------------------------------------------
-    # Filter 3 — Cost ranking (stub-pluggable cost functions)
-    # ------------------------------------------------------------------
+    costs_available = False  # becomes True once real cost functions are wired in
+
     best_vessel = None
     best_cost = float("inf")
     best_voyages = 0
@@ -195,18 +196,71 @@ def optimize_vessel(
             + congestion_risk_fn(v, discharge_port)
             + demurrage_fn(v, loading_port, discharge_port)
         )
+        if total_cost > 0:
+            costs_available = True
         if total_cost < best_cost:
             best_cost = total_cost
             best_vessel = v
             best_voyages = voyages
 
-    # De-duplicate warnings
-    warnings = list(dict.fromkeys(warnings))
+    # If all costs are zero (stubs not yet wired), fall back to largest-DWT vessel
+    if not costs_available:
+        best_vessel = max(eligible, key=lambda v: v.dwt)
+        best_voyages = math.ceil(cargo_quantity / best_vessel.dwt)
+
+    # ------------------------------------------------------------------
+    # Build human-readable explanation
+    # ------------------------------------------------------------------
+    rejected_summary = (
+        f" {len(rejected)} class(es) were ruled out due to physical port constraints"
+        f" ({', '.join(r['vessel_class'] for r in rejected)})."
+        if rejected
+        else ""
+    )
+
+    if costs_available:
+        selection_reason = (
+            f"selected on lowest total estimated cost across {best_voyages} voyage(s)."
+        )
+    else:
+        selection_reason = (
+            f"selected as the largest vessel physically compatible with both ports "
+            f"(DWT {best_vessel.dwt:,.0f} MT), minimising voyages needed to {best_voyages}. "
+            f"Cost-based ranking will apply once freight-rate models are live."
+        )
+
+    lp_constraints = []
+    if loading_port.max_draft:
+        lp_constraints.append(f"draft ≤ {loading_port.max_draft}m")
+    if loading_port.max_loa:
+        lp_constraints.append(f"LOA ≤ {loading_port.max_loa}m")
+    dp_constraints = []
+    if discharge_port.max_draft:
+        dp_constraints.append(f"draft ≤ {discharge_port.max_draft}m")
+    if discharge_port.max_loa:
+        dp_constraints.append(f"LOA ≤ {discharge_port.max_loa}m")
+
+    constraint_str = ""
+    if lp_constraints or dp_constraints:
+        parts = []
+        if lp_constraints:
+            parts.append(f"{loading_port.name} requires {', '.join(lp_constraints)}")
+        if dp_constraints:
+            parts.append(f"{discharge_port.name} requires {', '.join(dp_constraints)}")
+        constraint_str = " — ".join(parts) + ". "
+
+    explanation = (
+        f"{best_vessel.vessel_class} recommended for {loading_port.name} → {discharge_port.name}. "
+        f"{constraint_str}"
+        f"{len(eligible)} class(es) passed physical checks: {', '.join(v.vessel_class for v in eligible)}."
+        f"{rejected_summary} "
+        f"{best_vessel.vessel_class} {selection_reason}"
+    )
 
     return OptimizationResult(
         recommended_class=best_vessel.vessel_class,
         voyages_needed=best_voyages,
         eligible_classes=[v.vessel_class for v in eligible],
         rejected_classes=rejected,
-        warnings=warnings,
+        explanation=explanation,
     )

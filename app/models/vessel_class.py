@@ -11,6 +11,7 @@ class VesselClass(Base):
     # "class" is a reserved word in Python — using vessel_class as column name,
     # mapped to "class" column in DB via name argument.
     vessel_class = Column("class", String, nullable=False, unique=True)
+    index = Column(String, nullable=True)  # Baltic index: BCI, BPI, BSI, BHSI
     dwt = Column(Float, nullable=False)  # deadweight tonnage
     draft = Column(Float, nullable=False)  # meters
     loa = Column(Float, nullable=False)  # meters

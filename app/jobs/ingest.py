@@ -79,6 +79,8 @@ def _upsert_raw(db: Session, result: ScraperResult, today: date) -> None:
 
     elif result.source == "bunker":
         row_obj.vlsfo_price_usd = data["vlsfo_price_usd"]
+        if data.get("mgo_price_usd") is not None:
+            row_obj.mgo_price_usd = data["mgo_price_usd"]
         row_obj.is_stale_bunker = False
 
     elif result.source == "coking_coal":
@@ -155,7 +157,7 @@ def _forward_fill(db: Session, source: str, today: date) -> bool:
 
     source_cols = {
         "bdi": ["bdi", "bci", "bpi", "bsi"],
-        "bunker": ["vlsfo_price_usd"],
+        "bunker": ["vlsfo_price_usd", "mgo_price_usd"],
         "coking_coal": ["coking_coal_price_usd"],
         "steel_production": ["steel_production_mt"],
         "manufacturing_pmi": ["manufacturing_pmi"],

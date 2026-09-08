@@ -69,6 +69,7 @@ class FeatureStoreRow(Base):
 
     # --- Bunker ---
     vlsfo_price_usd = Column(Float, nullable=True)
+    mgo_price_usd = Column(Float, nullable=True)
 
     # --- Coking coal ---
     coking_coal_price_usd = Column(Float, nullable=True)

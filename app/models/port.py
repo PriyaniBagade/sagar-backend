@@ -24,5 +24,6 @@ class Port(Base):
     max_beam = Column(Float, nullable=True)  # meters; null = unverified
     berths = Column(Integer, nullable=True)
     handling_rate = Column(Float, nullable=True)  # MT/day
+    port_charges_flat_usd = Column(Float, nullable=True)  # flat total port charge USD
     last_verified = Column(Date, nullable=True)
     source_url = Column(String, nullable=True)

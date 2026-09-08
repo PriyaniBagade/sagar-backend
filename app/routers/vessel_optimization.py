@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.config.database import get_db
 from app.models.port import Port
 from app.models.vessel_class import VesselClass
+from app.models.vessel_request import VesselOptimizationRequest as VesselRequestModel
 from app.schemas.vessel_optimization import (
     VesselOptimizationRequest,
     VesselOptimizationResponse,
@@ -10,10 +11,10 @@ from app.schemas.vessel_optimization import (
 )
 from app.services.vessel_optimization import optimize_vessel, PortData, VesselClassData
 
-router = APIRouter(prefix="/api", tags=["Vessel Optimization"])
+router = APIRouter(prefix="/api/vessel", tags=["Vessel Optimization"])
 
 
-@router.post("/vessel-optimization", response_model=VesselOptimizationResponse)
+@router.post("/optimization", response_model=VesselOptimizationResponse)
 def vessel_optimization(
     payload: VesselOptimizationRequest, db: Session = Depends(get_db)
 ):
@@ -69,10 +70,25 @@ def vessel_optimization(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    # Persist the request + result to DB
+    db_record = VesselRequestModel(
+        cargo_type=payload.cargo_type,
+        loading_port_id=payload.loading_port_id,
+        discharge_port_id=payload.discharge_port_id,
+        quantity_mt=payload.cargo_quantity,
+        recommended_class=result.recommended_class,
+        voyages_needed=result.voyages_needed,
+        eligible_classes=result.eligible_classes,
+        rejected_classes=result.rejected_classes,
+        why_lines=[result.explanation],
+    )
+    db.add(db_record)
+    db.commit()
+
     return VesselOptimizationResponse(
         recommended_class=result.recommended_class,
         voyages_needed=result.voyages_needed,
         eligible_classes=result.eligible_classes,
         rejected_classes=[RejectedClass(**r) for r in result.rejected_classes],
-        warnings=result.warnings,
+        explanation=result.explanation,
     )

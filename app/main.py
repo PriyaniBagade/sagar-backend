@@ -9,11 +9,15 @@ import app.models.feature_store  # noqa: F401
 import app.models.forecast  # noqa: F401
 import app.models.vessel_request  # noqa: F401
 import app.models.route_distance  # noqa: F401
+import app.models.vessel  # noqa: F401
+import app.models.charter_schedule  # noqa: F401
 
 from app.routers.vessel_optimization import router as vessel_router
 from app.routers.forecast import router as forecast_router
 from app.routers.cost_summary import router as cost_summary_router
 from app.routers.forecast_signal import router as signal_router
+from app.routers.idle import router as idle_router
+from app.routers.risk_summary import router as risk_summary_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -31,6 +35,8 @@ app.include_router(vessel_router)
 app.include_router(forecast_router)
 app.include_router(cost_summary_router)
 app.include_router(signal_router)
+app.include_router(idle_router)
+app.include_router(risk_summary_router)
 
 
 @app.get("/")

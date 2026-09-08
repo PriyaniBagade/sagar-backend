@@ -13,6 +13,7 @@ import app.models.route_distance  # noqa: F401
 from app.routers.vessel_optimization import router as vessel_router
 from app.routers.forecast import router as forecast_router
 from app.routers.cost_summary import router as cost_summary_router
+from app.routers.forecast_signal import router as signal_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -29,6 +30,7 @@ app.add_middleware(
 app.include_router(vessel_router)
 app.include_router(forecast_router)
 app.include_router(cost_summary_router)
+app.include_router(signal_router)
 
 
 @app.get("/")

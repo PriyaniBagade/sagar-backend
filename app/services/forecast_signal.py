@@ -263,3 +263,138 @@ def compute_signal(
         expected_bdi_change_pct=round(bdi_change_pct, 2),
         factors=factors,
     )
+
+
+# ---------------------------------------------------------------------------
+# Contract Strategy — deterministic rule engine
+# Inputs derived from market conditions only; user duration is NOT an input.
+# ---------------------------------------------------------------------------
+
+
+from dataclasses import dataclass as _dc
+
+
+@_dc
+class ContractStrategyResult:
+    recommendation: str  # "SPOT" | "COA"
+    score: int
+    confidence: str  # "HIGH" | "MEDIUM" | "LOW"
+    reasons: list[str]
+    trend_percent: float
+    confidence_band_width: float
+    voyage_count: int
+    disruption_risk: bool
+
+
+def compute_contract_strategy(
+    trend_percent: float,
+    confidence_band_width: float,
+    voyage_count: int,
+    disruption_risk: bool,
+) -> ContractStrategyResult:
+    """
+    Scoring (fully deterministic, no ML):
+
+    Rule 1 — Rising market with tight confidence band
+        IF trend > +5% AND confidence_band_width <= 5%:   score += 2
+    Rule 2 — Uncertain market (wide band suppresses trend reward)
+        IF confidence_band_width > 10%:                   score unchanged
+          (confidence_band_width > 10 means LOW confidence —
+           do NOT reward trend, uncertainty favours flexibility)
+    Rule 3 — Multi-voyage requirement
+        IF voyage_count >= 4:                             score += 1
+    Rule 4 — Active disruption on route
+        IF disruption_risk:                               score += 1
+
+    Decision:
+        score >= 2  → COA (HIGH)
+        score == 1  → SPOT (MEDIUM)
+        score == 0  → SPOT (LOW)
+    """
+    score = 0
+    low_uncertainty = confidence_band_width <= 5.0
+    high_uncertainty = confidence_band_width > 10.0
+
+    # Rule 1 — only reward trend when market direction is reliable
+    if trend_percent > 5.0 and low_uncertainty:
+        score += 2
+
+    # Rule 2 — high uncertainty explicitly blocks trend scoring (already blocked
+    # above by low_uncertainty check, but stated separately for clarity)
+    # No additional scoring when high_uncertainty — intentional.
+
+    # Rule 3
+    if voyage_count >= 4:
+        score += 1
+
+    # Rule 4
+    if disruption_risk:
+        score += 1
+
+    # Decision
+    if score >= 2:
+        recommendation = "COA"
+        confidence = "HIGH"
+    elif score == 1:
+        recommendation = "SPOT"
+        confidence = "MEDIUM"
+    else:
+        recommendation = "SPOT"
+        confidence = "LOW"
+
+    # Build strongest 1–2 reasons
+    reason_candidates: list[tuple[int, str]] = []  # (weight, text)
+
+    if trend_percent > 5.0 and low_uncertainty:
+        reason_candidates.append(
+            (3, f"BDI forecast is rising {trend_percent:.1f}% with high confidence.")
+        )
+    elif high_uncertainty:
+        reason_candidates.append(
+            (3, "Forecast confidence is low, so market direction is uncertain.")
+        )
+    elif trend_percent <= 0:
+        reason_candidates.append(
+            (
+                2,
+                f"Market is flat or softening ({trend_percent:+.1f}%), reducing the urgency of locking in rates.",
+            )
+        )
+
+    if voyage_count >= 4:
+        reason_candidates.append(
+            (
+                2,
+                f"This shipment requires {voyage_count} voyages, making rate stability valuable.",
+            )
+        )
+    else:
+        reason_candidates.append(
+            (
+                1,
+                f"Only {voyage_count} voyage{'s' if voyage_count != 1 else ''} expected, reducing the benefit of a long contract.",
+            )
+        )
+
+    if disruption_risk:
+        reason_candidates.append(
+            (
+                2,
+                "Active geopolitical or weather disruption adds route uncertainty, favouring rate lock-in.",
+            )
+        )
+
+    # Sort by weight descending, take top 2
+    reason_candidates.sort(key=lambda x: x[0], reverse=True)
+    reasons = [text for _, text in reason_candidates[:2]]
+
+    return ContractStrategyResult(
+        recommendation=recommendation,
+        score=score,
+        confidence=confidence,
+        reasons=reasons,
+        trend_percent=round(trend_percent, 2),
+        confidence_band_width=round(confidence_band_width, 2),
+        voyage_count=voyage_count,
+        disruption_risk=disruption_risk,
+    )

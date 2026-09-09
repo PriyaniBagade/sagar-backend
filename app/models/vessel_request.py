@@ -23,6 +23,9 @@ class VesselOptimizationRequest(Base):
         UUID(as_uuid=True), ForeignKey("ports.id"), nullable=False
     )
     quantity_mt = Column(Float, nullable=False)
+    contract_duration = Column(
+        String, nullable=True
+    )  # "spot", "3_months", "6_months", "12_months"
 
     # --- optimize output ---
     recommended_class = Column(String, nullable=True)

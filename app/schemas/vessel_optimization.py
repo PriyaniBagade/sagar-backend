@@ -8,6 +8,9 @@ class VesselOptimizationRequest(BaseModel):
     loading_port_id: str
     discharge_port_id: str
     cargo_quantity: float  # metric tons
+    contract_duration: Optional[str] = (
+        None  # "spot", "3_months", "6_months", "12_months"
+    )
 
     @field_validator("loading_port_id", "discharge_port_id")
     @classmethod

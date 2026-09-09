@@ -1,4 +1,5 @@
 from pydantic import BaseModel, field_validator
+from typing import Literal
 from uuid import UUID
 
 
@@ -24,6 +25,21 @@ class TopFactor(BaseModel):
     summary: str
 
 
+class ContractStrategyFactors(BaseModel):
+    trend_percent: float
+    confidence_band_width: float
+    voyage_count: int
+    disruption_risk: bool
+
+
+class ContractStrategy(BaseModel):
+    recommendation: Literal["SPOT", "COA"]
+    score: int
+    confidence: Literal["HIGH", "MEDIUM", "LOW"]
+    reasons: list[str]
+    factors: ContractStrategyFactors
+
+
 class SignalResponse(BaseModel):
     verdict: str  # "BOOK_NOW" | "HOLD" | "WAIT"
     confidence: int  # 0–95
@@ -32,3 +48,4 @@ class SignalResponse(BaseModel):
     expected_bdi_change_pct: float  # ((predicted - current) / current) * 100
     top_factors: list[TopFactor]  # top contributing factors sorted by abs impact
     strategy_cards: list  # reserved for future use
+    contract_strategy: ContractStrategy  # contract recommendation

@@ -29,24 +29,37 @@ INDEX_COLUMN: dict[str, str] = {
 
 @dataclass
 class CostSummaryResult:
-    # voyage days breakdown
+    # vessel & voyage parameters
+    num_voyages: int
+    vessel_capacity: float
+
+    # voyage days breakdown (for 1 voyage)
     sailing_days: float
     load_days: float
     discharge_days: float
     canal_extra_days: float
-    voyage_days: float
+    voyage_days: float  # single voyage duration
 
-    # cost components
-    freight_cost: float
+    # cost components (per voyage)
     market_tce_per_day: float  # index_points × multiplier
-    port_charges: float
+    freight_cost: float  # market_tce_per_day × voyage_days
+    load_port_charges: float
+    discharge_port_charges: float
+    port_charges: float  # load_port_charges + discharge_port_charges
+    insurance: float  # 1% of freight_cost
+    cost_per_voyage: float  # freight_cost + port_charges + insurance
+
+    # total recommendation & landed cost
+    total_landed_cost: float  # cost_per_voyage × num_voyages
+    landed_cost_per_mt: float  # total_landed_cost / quantity_mt
+
+    # secondary OPEX / Net Result / TCE
     bunker_cost: float
     canal_toll: float
     commission: float
     opex_total: float
     net_result: float
     tce_per_day: float
-    landed_cost_per_mt: float
 
     # snapshots
     vlsfo_price_used: float
@@ -73,84 +86,84 @@ def compute_cost_summary(
     vlsfo_price: float,
     mgo_price: float,
     index_points: float,
+    vessel_capacity: float = 75000.0,
 ) -> CostSummaryResult:
+    import math
+
     vc = vessel_class.lower()
 
-    speed = SPEED[vc]
-    consumption = CONSUMPTION[vc]
-    opex_day = OPEX[vc]
-    multiplier = INDEX_POINT_MULTIPLIER[vc]
+    speed = SPEED.get(vc, 14.0)
+    consumption = CONSUMPTION.get(vc, {"laden_mtpd": 29.0, "port_mtpd": 3.5})
+    opex_day = OPEX.get(vc, 7500.0)
+    multiplier = INDEX_POINT_MULTIPLIER.get(vc, 9.0)
 
-    # 3. Sailing days
+    # Step 1. Number of voyages needed
+    cap = vessel_capacity if vessel_capacity > 0 else 75000.0
+    num_voyages = math.ceil(quantity_mt / cap) if quantity_mt > 0 else 1
+
+    # Step 2. Voyage days (for ONE trip)
     sailing_days = distance_nm / (speed * 24)
-
-    # 4-5. Port days
-    load_days = quantity_mt / load_rate_mtpd
-    discharge_days = quantity_mt / discharge_rate_mtpd
-
-    # 6. Canal extra days
+    load_days = cap / load_rate_mtpd if load_rate_mtpd > 0 else 0.0
+    discharge_days = cap / discharge_rate_mtpd if discharge_rate_mtpd > 0 else 0.0
     canal_extra = CANAL_EXTRA_DAYS if route_type == "suez" else 0.0
 
-    # 7. Total voyage days
     voyage_days = sailing_days + load_days + discharge_days + canal_extra
 
-    # 8-10. Bunker costs
-    sea_bunker = sailing_days * consumption["laden_mtpd"] * vlsfo_price
-    port_bunker = (load_days + discharge_days) * consumption["port_mtpd"] * mgo_price
-    bunker_cost = sea_bunker + port_bunker
-
-    # 11-12. Freight via index point multiplier
+    # Step 3. Freight cost (ONE voyage)
     market_tce_per_day = index_points * multiplier
     freight_cost = market_tce_per_day * voyage_days
 
-    # 13. Commission
-    commission = freight_cost * COMMISSION_RATE
-
-    # 14. Port charges
+    # Step 4. Add discharge charges + insurance (ONE voyage)
+    insurance = freight_cost * 0.01
     port_charges = load_port_charges + discharge_port_charges
+    cost_per_voyage = freight_cost + port_charges + insurance
 
-    # 15. Canal toll
-    canal_toll = CANAL_TOLL[vc] if route_type == "suez" else 0.0
+    # Step 5. Multiply by all voyages
+    total_landed_cost = cost_per_voyage * num_voyages
+    landed_cost_per_mt = total_landed_cost / quantity_mt if quantity_mt > 0 else 0.0
 
-    # 16. OPEX
+    # Secondary OPEX & Bunker breakdown
+    sea_bunker = sailing_days * consumption["laden_mtpd"] * vlsfo_price
+    port_bunker = (load_days + discharge_days) * consumption["port_mtpd"] * mgo_price
+    bunker_cost = sea_bunker + port_bunker
+    commission = freight_cost * COMMISSION_RATE
+    canal_toll = CANAL_TOLL.get(vc, 200_000.0) if route_type == "suez" else 0.0
     opex_total = opex_day * voyage_days
-
-    # 17. Net result (freight after all deductions including OPEX)
     net_result = (
         freight_cost - commission - bunker_cost - port_charges - canal_toll - opex_total
     )
-
-    # 18. TCE = net_result / voyage_days (net_result already has OPEX deducted)
-    tce_per_day = net_result / voyage_days
-
-    # 19. Landed cost per MT
-    landed_cost_per_mt = (
-        bunker_cost + port_charges + canal_toll + commission + opex_total
-    ) / quantity_mt
+    tce_per_day = net_result / voyage_days if voyage_days > 0 else 0.0
 
     why = (
-        f"Based on the current {vessel_class.capitalize()} Baltic Index "
-        f"({index_points:,.0f} points \u2192 estimated market TCE ${market_tce_per_day:,.0f}/day) "
-        f"for this {voyage_days:.1f}-day voyage, "
-        f"adjusted for current bunker prices (VLSFO ${vlsfo_price:.0f}/MT, MGO ${mgo_price:.0f}/MT)."
+        f"Calculated for {quantity_mt:,.0f} MT cargo across {num_voyages} voyage(s) "
+        f"using {vessel_class.capitalize()} ({cap:,.0f} MT capacity). "
+        f"Each voyage takes {voyage_days:.1f} days at market rate ${market_tce_per_day:,.0f}/day "
+        f"({index_points:,.0f} points × {multiplier})."
     )
 
     return CostSummaryResult(
+        num_voyages=num_voyages,
+        vessel_capacity=cap,
         sailing_days=round(sailing_days, 2),
         load_days=round(load_days, 2),
         discharge_days=round(discharge_days, 2),
-        canal_extra_days=canal_extra,
+        canal_extra_days=round(canal_extra, 2),
         voyage_days=round(voyage_days, 2),
-        freight_cost=round(freight_cost, 2),
         market_tce_per_day=round(market_tce_per_day, 2),
+        freight_cost=round(freight_cost, 2),
+        load_port_charges=round(load_port_charges, 2),
+        discharge_port_charges=round(discharge_port_charges, 2),
         port_charges=round(port_charges, 2),
+        insurance=round(insurance, 2),
+        cost_per_voyage=round(cost_per_voyage, 2),
+        total_landed_cost=round(total_landed_cost, 2),
+        landed_cost_per_mt=round(landed_cost_per_mt, 2),
         bunker_cost=round(bunker_cost, 2),
         canal_toll=round(canal_toll, 2),
         commission=round(commission, 2),
         opex_total=round(opex_total, 2),
         net_result=round(net_result, 2),
         tce_per_day=round(tce_per_day, 2),
-        landed_cost_per_mt=round(landed_cost_per_mt, 2),
         vlsfo_price_used=vlsfo_price,
         mgo_price_used=mgo_price,
         index_points_used=index_points,

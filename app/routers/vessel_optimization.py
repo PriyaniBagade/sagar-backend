@@ -76,7 +76,6 @@ def vessel_optimization(
         loading_port_id=payload.loading_port_id,
         discharge_port_id=payload.discharge_port_id,
         quantity_mt=payload.cargo_quantity,
-        contract_duration=payload.contract_duration,
         recommended_class=result.recommended_class,
         voyages_needed=result.voyages_needed,
         eligible_classes=result.eligible_classes,

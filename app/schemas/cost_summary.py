@@ -27,19 +27,31 @@ class VoyageDays(BaseModel):
 
 
 class CostBreakdown(BaseModel):
+    num_voyages: int
+    vessel_capacity: float
     voyage_days: VoyageDays
+    market_tce_per_day: float
     freight_cost: float
+    load_port_charges: float
+    discharge_port_charges: float
     port_charges: float
-    bunker_cost: float
-    canal_toll: float
-    commission: float
-    opex_total: float
-    net_result: float
-    tce_per_day: float
+    insurance: float
+    cost_per_voyage: float
+    total_landed_cost: float
+    landed_cost_per_mt: float
+    bunker_cost: float = 0.0
+    canal_toll: float = 0.0
+    commission: float = 0.0
+    opex_total: float = 0.0
+    net_result: float = 0.0
+    tce_per_day: float = 0.0
 
 
 class CostHero(BaseModel):
     landed_cost_per_mt: float
+    total_landed_cost: float
+    cost_per_voyage: float
+    num_voyages: int
     tag: str  # "Approx. — predicted"
     why: str  # human-readable explanation
 

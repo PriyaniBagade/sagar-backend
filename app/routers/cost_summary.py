@@ -109,6 +109,7 @@ def cost_summary(payload: CostSummaryRequest, db: Session = Depends(get_db)):
         vlsfo_price=vlsfo_price,
         mgo_price=mgo_price,
         index_points=index_pts,
+        vessel_capacity=vessel.dwt,
     )
 
     # --- 8. Persist to DB ---
@@ -117,6 +118,7 @@ def cost_summary(payload: CostSummaryRequest, db: Session = Depends(get_db)):
         discharge_port_id=discharge_port.id,
         quantity_mt=payload.quantity_mt,
         selected_class=vessel.vessel_class,
+        voyages_needed=result.num_voyages,
         sailing_days=result.sailing_days,
         load_days=result.load_days,
         discharge_days=result.discharge_days,
@@ -130,6 +132,7 @@ def cost_summary(payload: CostSummaryRequest, db: Session = Depends(get_db)):
         opex_total_usd=result.opex_total,
         net_result_usd=result.net_result,
         tce_per_day=result.tce_per_day,
+        total_landed_cost_usd=result.total_landed_cost,
         landed_cost_per_mt=result.landed_cost_per_mt,
         cost_confidence=result.tag,
         vlsfo_price_used=result.vlsfo_price_used,
@@ -146,10 +149,15 @@ def cost_summary(payload: CostSummaryRequest, db: Session = Depends(get_db)):
     return CostSummaryResponse(
         hero=CostHero(
             landed_cost_per_mt=result.landed_cost_per_mt,
+            total_landed_cost=result.total_landed_cost,
+            cost_per_voyage=result.cost_per_voyage,
+            num_voyages=result.num_voyages,
             tag=result.tag,
             why=result.why,
         ),
         breakdown=CostBreakdown(
+            num_voyages=result.num_voyages,
+            vessel_capacity=result.vessel_capacity,
             voyage_days=VoyageDays(
                 sailing_days=result.sailing_days,
                 load_days=result.load_days,
@@ -157,8 +165,15 @@ def cost_summary(payload: CostSummaryRequest, db: Session = Depends(get_db)):
                 canal_extra_days=result.canal_extra_days,
                 total=result.voyage_days,
             ),
+            market_tce_per_day=result.market_tce_per_day,
             freight_cost=result.freight_cost,
+            load_port_charges=result.load_port_charges,
+            discharge_port_charges=result.discharge_port_charges,
             port_charges=result.port_charges,
+            insurance=result.insurance,
+            cost_per_voyage=result.cost_per_voyage,
+            total_landed_cost=result.total_landed_cost,
+            landed_cost_per_mt=result.landed_cost_per_mt,
             bunker_cost=result.bunker_cost,
             canal_toll=result.canal_toll,
             commission=result.commission,

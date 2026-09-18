@@ -19,6 +19,7 @@ from app.routers.forecast_signal import router as signal_router
 from app.routers.idle import router as idle_router
 from app.routers.risk_summary import router as risk_summary_router
 from app.routers.ports import router as ports_router
+from app.routers.landed_cost import router as landed_cost_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -39,6 +40,7 @@ app.include_router(signal_router)
 app.include_router(idle_router)
 app.include_router(risk_summary_router)
 app.include_router(ports_router)
+app.include_router(landed_cost_router)
 
 
 @app.get("/")

@@ -21,6 +21,7 @@ from app.routers.risk_summary import router as risk_summary_router
 from app.routers.ports import router as ports_router
 from app.routers.landed_cost import router as landed_cost_router
 from app.routers.risk_mitigation import router as risk_mitigation_router
+from app.routers.market_entry_timing import router as market_entry_timing_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -43,6 +44,7 @@ app.include_router(risk_summary_router)
 app.include_router(ports_router)
 app.include_router(landed_cost_router)
 app.include_router(risk_mitigation_router)
+app.include_router(market_entry_timing_router)
 
 
 @app.get("/")

@@ -42,6 +42,27 @@ def run_daily_pipeline() -> None:
             )
 
         build_features()
+
+        # Step 3: save today's actual index values so predicted-vs-actual works
+        log.info("=== Step 3/3: Save actuals + run forecast ===")
+        from app.config.database import SessionLocal
+        from app.services.freight_prediction import save_daily_actuals, get_forecast
+
+        db = SessionLocal()
+        try:
+            actuals = save_daily_actuals(db)
+            log.info("  actuals saved: %s", actuals)
+
+            # Run today's 1-day forecast for all indices — persists to forecasts table
+            for idx in ("bdi", "bci", "bpi", "bsi"):
+                try:
+                    get_forecast(idx, db, days=1)
+                    log.info("  forecast OK: %s", idx)
+                except Exception as e:
+                    log.warning("  forecast FAILED: %s — %s", idx, e)
+        finally:
+            db.close()
+
         log.info("=== DAILY PIPELINE COMPLETE ===")
     except Exception:
         log.exception("Daily pipeline crashed")

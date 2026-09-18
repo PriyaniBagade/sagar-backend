@@ -20,7 +20,7 @@ def main() -> int:
     from app.jobs.ingest import run_all
     from app.jobs.feature_builder import build_features
 
-    log.info("=== Step 1/2: Ingest ===")
+    log.info("=== Step 1/3: Ingest ===")
     results = run_all()
 
     failures = [s for s, r in results.items() if not r.ok]
@@ -33,8 +33,26 @@ def main() -> int:
             "%d scraper(s) failed and were forward-filled: %s", len(failures), failures
         )
 
-    log.info("=== Step 2/2: Feature Builder ===")
+    log.info("=== Step 2/3: Feature Builder ===")
     build_features()
+
+    log.info("=== Step 3/3: Save actuals + run daily forecasts ===")
+    from app.config.database import SessionLocal
+    from app.services.freight_prediction import save_daily_actuals, get_forecast
+
+    db = SessionLocal()
+    try:
+        actuals = save_daily_actuals(db)
+        print(f"  actuals saved: {actuals}")
+
+        for idx in ("bdi", "bci", "bpi", "bsi"):
+            try:
+                get_forecast(idx, db, days=1)
+                print(f"  forecast OK: {idx}")
+            except Exception as e:
+                print(f"  forecast FAILED: {idx} — {e}")
+    finally:
+        db.close()
 
     # exit 1 only if ALL scrapers failed (total blackout), not partial failures
     if len(failures) == len(results):

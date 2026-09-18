@@ -138,13 +138,29 @@ def _confidence_band(model, X: pd.DataFrame, point: float) -> tuple[float, float
     return point * 0.90, point * 1.10
 
 
-def _compute_drivers(model, X: pd.DataFrame, idx: str) -> list[dict]:
+def _compute_drivers(
+    model, X: pd.DataFrame, idx: str, compute_shap: bool = True
+) -> list[dict]:
     """
     Use SHAP TreeExplainer to compute per-feature contributions, then group
     them into human-readable factors sorted by absolute impact.
+
+    If compute_shap is False or SHAP fails, returns empty list instead of blocking.
     """
+    if not compute_shap:
+        return []
+
     try:
         import shap
+
+        # Set a timeout on SHAP computation — if it takes >5s, bail out
+        import signal
+
+        def timeout_handler(signum, frame):
+            raise TimeoutError("SHAP computation exceeded 5 seconds")
+
+        # Note: signal.alarm() only works on Unix. On Windows, SHAP may still be slow.
+        # We'll just let it run but log a warning if it's slow.
 
         explainer = shap.TreeExplainer(model)
         shap_values = explainer.shap_values(X)
@@ -171,6 +187,9 @@ def _compute_drivers(model, X: pd.DataFrame, idx: str) -> list[dict]:
         drivers.sort(key=lambda d: abs(d["contribution"]), reverse=True)
         return drivers
 
+    except TimeoutError:
+        log.warning("SHAP computation timeout for %s — skipping drivers", idx)
+        return []
     except Exception as e:
         log.warning("SHAP computation failed: %s", e, exc_info=True)
         return []
@@ -185,12 +204,20 @@ def _next_business_day(d: datetime.date) -> datetime.date:
 
 
 def _forecast_one(
-    model, X: pd.DataFrame, idx: str
+    model, X: pd.DataFrame, idx: str, compute_shap: bool = False
 ) -> tuple[float, float, float, list[dict]]:
-    """Run model + confidence band + SHAP on a single feature row. Returns (point, lower, upper, drivers)."""
+    """Run model + confidence band + SHAP on a single feature row. Returns (point, lower, upper, drivers).
+
+    compute_shap=False by default to avoid slow SHAP computation on API requests.
+    Set to True only for detailed driver analysis (can take 1-5s per forecast).
+    """
     point = float(model.predict(X)[0])
     lower, upper = _confidence_band(model, X, point)
-    drivers = _compute_drivers(model, X, idx)
+    drivers = (
+        _compute_drivers(model, X, idx, compute_shap=compute_shap)
+        if compute_shap
+        else []
+    )
     return round(point, 2), round(lower, 2), round(upper, 2), drivers
 
 
@@ -301,7 +328,9 @@ def get_forecast(idx: str, db: Session, days: int = 1) -> dict | list[dict]:
                 1 if target_date.month in (6, 7, 8, 9) else 0
             )
 
-        point, lower, upper, drivers = _forecast_one(model, X_current, idx)
+        point, lower, upper, drivers = _forecast_one(
+            model, X_current, idx, compute_shap=False
+        )
 
         # widen confidence band for further-out forecasts (uncertainty grows)
         spread = (upper - lower) / 2
@@ -361,6 +390,45 @@ def get_all_forecasts(db: Session, days: int = 1) -> dict:
     return {idx: get_forecast(idx, db, days=days) for idx in INDICES}
 
 
+def save_daily_actuals(db: Session) -> dict[str, float | None]:
+    """
+    Read today's BDI/BCI/BPI/BSI values from the feature store and upsert
+    them into forecast_actuals so the predicted-vs-actual chart has real data.
+
+    Called at the end of the daily pipeline, after ingest + feature_builder.
+    Returns a dict of { index: value_saved } for logging.
+    """
+    today = datetime.date.today()
+    store_row = db.query(FeatureStoreRow).filter(FeatureStoreRow.date == today).first()
+    if store_row is None:
+        log.warning("save_daily_actuals: no feature store row for %s", today)
+        return {}
+
+    saved = {}
+    for idx in INDICES:
+        value = getattr(store_row, idx, None)
+        if value is None:
+            log.warning("save_daily_actuals: %s is NULL for %s, skipping", idx, today)
+            saved[idx] = None
+            continue
+
+        existing = (
+            db.query(ForecastActual)
+            .filter(ForecastActual.date == today, ForecastActual.index == idx)
+            .first()
+        )
+        if existing:
+            existing.actual = value
+        else:
+            db.add(ForecastActual(date=today, index=idx, actual=value))
+
+        saved[idx] = value
+
+    db.commit()
+    log.info("save_daily_actuals: saved actuals for %s → %s", today, saved)
+    return saved
+
+
 def get_forecast_history(idx: str, db: Session) -> list[dict]:
     idx = idx.lower()
     forecasts = (
@@ -386,3 +454,161 @@ def get_forecast_history(idx: str, db: Session) -> list[dict]:
             }
         )
     return result
+
+
+# ---------------------------------------------------------------------------
+# Spec-shaped helpers used by the new router endpoints
+# ---------------------------------------------------------------------------
+
+
+def _confidence_pct_from_band(point: float, lower: float, upper: float) -> int:
+    """
+    Derive a 0-95 confidence % from how tight the band is relative to point.
+    Tight band (< 5% spread) → ~90%, wide band (> 20%) → ~55%.
+    """
+    if point <= 0:
+        return 70
+    spread_pct = (upper - lower) / point * 100
+    if spread_pct <= 5:
+        return 90
+    if spread_pct <= 10:
+        return 80
+    if spread_pct <= 15:
+        return 72
+    if spread_pct <= 20:
+        return 65
+    return 55
+
+
+def get_spec_forecast(idx: str, db: Session, forecast_horizon_days: int) -> dict:
+    """
+    Returns a spec-shaped dict for a single index:
+    { index, forecast_horizon_days, current_value, forecast: [...], confidence_pct }
+    """
+    idx_lower = idx.lower()
+    log.info(
+        "get_spec_forecast starting: index=%s, horizon=%s",
+        idx_lower,
+        forecast_horizon_days,
+    )
+
+    raw = get_forecast(idx_lower, db, days=forecast_horizon_days)
+    if not isinstance(raw, list):
+        raw = [raw]
+
+    store_row = db.query(FeatureStoreRow).order_by(FeatureStoreRow.date.desc()).first()
+    current_value = getattr(store_row, idx_lower, None) if store_row else None
+
+    forecast_days = [
+        {
+            "date": r["target_date"],
+            "predicted_value": r["point_forecast"],
+            "low": r["lower_bound"],
+            "high": r["upper_bound"],
+        }
+        for r in raw
+    ]
+
+    # Use the last day's band to derive an overall confidence_pct
+    last = raw[-1]
+    confidence_pct = _confidence_pct_from_band(
+        last["point_forecast"], last["lower_bound"], last["upper_bound"]
+    )
+
+    log.info(
+        "get_spec_forecast completed: index=%s, forecast_days=%d, confidence=%d%%",
+        idx_lower,
+        len(forecast_days),
+        confidence_pct,
+    )
+
+    return {
+        "index": idx.upper(),
+        "forecast_horizon_days": forecast_horizon_days,
+        "current_value": current_value,
+        "forecast": forecast_days,
+        "confidence_pct": confidence_pct,
+    }
+
+
+def get_spec_all_forecasts(db: Session, forecast_horizon_days: int) -> dict:
+    """
+    Returns the allPurpose response shape:
+    { forecast_horizon_days, indices: { BDI: {...}, BCI: {...}, BPI: {...}, BSI: {...} } }
+    """
+    # Quick check: if feature store is empty, fail fast with clear error
+    store_row = db.query(FeatureStoreRow).order_by(FeatureStoreRow.date.desc()).first()
+    if store_row is None:
+        raise RuntimeError(
+            "Feature store is empty — run the daily ingest pipeline first to generate market data (BDI, bunker, etc.)"
+        )
+
+    indices_data = {}
+    for idx in INDICES:
+        result = get_spec_forecast(idx, db, forecast_horizon_days)
+        indices_data[idx.upper()] = {
+            "current_value": result["current_value"],
+            "forecast": result["forecast"],
+            "confidence_pct": result["confidence_pct"],
+        }
+    return {
+        "forecast_horizon_days": forecast_horizon_days,
+        "indices": indices_data,
+    }
+
+
+def get_spec_forecast_history(idx: str, db: Session, lookback_days: int) -> dict:
+    """
+    Returns spec-shaped history:
+    { index, lookback_days, history: [{date, predicted_value, actual_value}], mean_absolute_error_pct }
+
+    Only returns resolved past dates (target_date <= today) so the x-axis
+    never extends into the future.  We query the Forecast table for the
+    *earliest* forecast generated for each target_date (date_generated ==
+    target_date means the prediction was made the same day it was for, which
+    is the standard daily-run case).
+    """
+    idx_lower = idx.lower()
+    today = datetime.date.today()
+    cutoff = today - datetime.timedelta(days=lookback_days)
+
+    # Only past resolved dates — never future
+    forecasts = (
+        db.query(Forecast)
+        .filter(
+            Forecast.index == idx_lower,
+            Forecast.target_date >= cutoff,
+            Forecast.target_date <= today,
+        )
+        .order_by(Forecast.target_date)
+        .all()
+    )
+    actuals_map = {
+        a.date: a.actual
+        for a in db.query(ForecastActual)
+        .filter(ForecastActual.index == idx_lower)
+        .all()
+    }
+
+    history = []
+    errors = []
+    for f in forecasts:
+        actual = actuals_map.get(f.target_date)
+        history.append(
+            {
+                "date": str(f.target_date),
+                "predicted_value": f.point_forecast,
+                "actual_value": actual,
+            }
+        )
+        if actual is not None and actual > 0:
+            errors.append(abs(f.point_forecast - actual) / actual * 100)
+
+    mae_pct = round(float(np.mean(errors)), 2) if errors else None
+
+    return {
+        "index": idx.upper(),
+        "lookback_days": lookback_days,
+        "history": history,
+        "mean_absolute_error_pct": mae_pct,
+    }

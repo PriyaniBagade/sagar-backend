@@ -40,5 +40,4 @@ Thumbs.db
 # Prisma
 prisma/migrations/
 
-models_output
 data

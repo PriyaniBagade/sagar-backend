@@ -431,30 +431,78 @@ def market_entry_timing(
         reason = "Market signals are mixed; current rate is competitive, but no strong signal to commit or delay."
 
     # ── 10. SPOT vs COA strategy ──────────────────────────────────────
+    # cargo_quantity_mt = quantity per shipment.
+    # total_mt = cargo per shipment × number of voyages in the contract period.
+    total_mt = payload.cargo_quantity_mt * voyages_in_contract
+
+    # SPOT: current rate × total MT shipped over contract
     spot_rate = current_rate
-    spot_total = round(spot_rate * payload.cargo_quantity_mt * voyages_in_contract, 2)
+    spot_total = round(spot_rate * total_mt, 2)
 
+    # COA: average forecasted rate × same total MT
     coa_rate = _average_forecasted_rate(vc, route, payload.contract_duration_months, db)
-    coa_total = round(coa_rate * payload.cargo_quantity_mt * voyages_in_contract, 2)
+    coa_total = round(coa_rate * total_mt, 2)
 
-    spot_vs_coa_pct = round((spot_total - coa_total) / coa_total * 100, 1)
+    # Savings expressed as percentage of spot total (positive = COA is cheaper)
+    savings = round(spot_total - coa_total, 2)
+    savings_pct = round(savings / spot_total * 100, 1) if spot_total > 0 else 0.0
 
-    # Recommendation: cheaper option + verdict preference
-    if verdict == "WAIT":
-        recommendation = "SPOT"
-        reason_rec = (
-            "Market is forecast to soften, reducing urgency to lock in a rate now."
+    # ── Contract type: always the cheaper option ──────────────────────
+    # (Timing signal and contract type are independent outputs)
+    cheaper = "COA" if coa_total < spot_total else "SPOT"
+    recommendation = cheaper
+
+    # ── Build "why" text — must be consistent with both signals ───────
+    timing_text = {
+        "BOOK": "rates are forecast to strengthen",
+        "WAIT": "rates are forecast to soften",
+        "NEUTRAL": "market signals are mixed",
+    }[verdict]
+
+    if cheaper == "COA":
+        cost_text = (
+            f"COA is the lower-cost option at ${coa_total:,.0f} vs spot ${spot_total:,.0f} "
+            f"(saves ${abs(savings):,.0f}, {abs(savings_pct):.1f}% cheaper)."
         )
-    elif verdict == "BOOK":
-        recommendation = "COA"
-        reason_rec = "Market is forecast to strengthen; locking in a COA protects against further rate increases."
+        if verdict == "WAIT":
+            reason_rec = (
+                f"Although {timing_text}, COA locks in the lower forecasted rate now. "
+                + cost_text
+            )
+        else:
+            reason_rec = (
+                f"Because {timing_text}, securing a COA now protects against further increases. "
+                + cost_text
+            )
     else:
-        # NEUTRAL: go with cheaper option
-        recommendation = "SPOT" if spot_total < coa_total else "COA"
-        reason_rec = f"Market signals are mixed; {'spot bookings offer more flexibility' if recommendation == 'SPOT' else 'a COA provides rate certainty'}."
+        cost_text = (
+            f"Spot is the lower-cost option at ${spot_total:,.0f} vs COA ${coa_total:,.0f} "
+            f"(COA costs ${abs(savings):,.0f} more, {abs(savings_pct):.1f}% dearer)."
+        )
+        if verdict == "WAIT":
+            reason_rec = (
+                f"Because {timing_text}, waiting for better spot rates is advisable. "
+                + cost_text
+                + " Booking spot gives maximum flexibility while rates adjust."
+            )
+        else:
+            reason_rec = (
+                f"Despite {timing_text}, spot remains cheaper for this volume. "
+                + cost_text
+            )
 
     if geo_impact < -20:
-        reason_rec += " Active route disruption adds short-term uncertainty, favoring flexibility over commitment."
+        reason_rec += " Active route disruption adds short-term uncertainty; spot flexibility has additional value."
+
+    # Format savings label for UI: "Saves $X (Y% cheaper than spot)" or "Costs $X (Y% more than spot)"
+    if savings >= 0:
+        vs_spot_label = (
+            f"Saves ${savings:,.0f} ({abs(savings_pct):.1f}% cheaper than spot)"
+        )
+    else:
+        vs_spot_label = (
+            f"Costs ${abs(savings):,.0f} ({abs(savings_pct):.1f}% more than spot)"
+        )
 
     return MarketEntryTimingResponse(
         verdict=verdict,
@@ -467,21 +515,23 @@ def market_entry_timing(
             recommendation=recommendation,
             confidence=(
                 "HIGH"
-                if abs(spot_vs_coa_pct) > 10
-                else "MEDIUM" if abs(spot_vs_coa_pct) > 5 else "LOW"
+                if abs(savings_pct) > 10
+                else "MEDIUM" if abs(savings_pct) > 5 else "LOW"
             ),
             comparison={
                 "spot": {
                     "rate_per_mt": round(spot_rate, 4),
                     "voyages_estimated": voyages_in_contract,
+                    "total_mt": total_mt,
                     "total_cost": spot_total,
                 },
                 "coa": {
                     "duration_months": payload.contract_duration_months,
                     "rate_per_mt": round(coa_rate, 4),
                     "voyages_estimated": voyages_in_contract,
+                    "total_mt": total_mt,
                     "total_cost": coa_total,
-                    "vs_spot_pct": f"{'+' if spot_vs_coa_pct > 0 else ''}{spot_vs_coa_pct}%",
+                    "vs_spot_label": vs_spot_label,
                 },
             },
             reasons=[

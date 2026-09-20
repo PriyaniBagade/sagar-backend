@@ -113,15 +113,21 @@ def compute_cost_summary(
     market_tce_per_day = index_points * multiplier
     freight_cost = market_tce_per_day * voyage_days
 
-    # Step 4. Add discharge charges + insurance (ONE voyage)
-    insurance = freight_cost * 0.01
-    port_charges = load_port_charges + discharge_port_charges
-    cost_per_voyage = freight_cost + port_charges + insurance
+    # Step 4. Port charges + insurance (ONE voyage) → cost_per_voyage
+    # Invariant: cost_per_voyage == freight_cost + load_port_charges + discharge_port_charges + insurance
+    # Round each line item first, then sum — avoids floating-point drift between line items and total.
+    insurance = round(freight_cost * 0.01, 2)
+    port_charges = round(load_port_charges + discharge_port_charges, 2)
+    freight_cost_r = round(freight_cost, 2)
+    load_port_charges_r = round(load_port_charges, 2)
+    discharge_port_charges_r = round(discharge_port_charges, 2)
+    cost_per_voyage = (
+        freight_cost_r + load_port_charges_r + discharge_port_charges_r + insurance
+    )
 
     # Step 5. Multiply by all voyages
     total_landed_cost = cost_per_voyage * num_voyages
     landed_cost_per_mt = total_landed_cost / quantity_mt if quantity_mt > 0 else 0.0
-
     # Secondary OPEX & Bunker breakdown
     sea_bunker = sailing_days * consumption["laden_mtpd"] * vlsfo_price
     port_bunker = (load_days + discharge_days) * consumption["port_mtpd"] * mgo_price
@@ -150,14 +156,18 @@ def compute_cost_summary(
         canal_extra_days=round(canal_extra, 2),
         voyage_days=round(voyage_days, 2),
         market_tce_per_day=round(market_tce_per_day, 2),
-        freight_cost=round(freight_cost, 2),
-        load_port_charges=round(load_port_charges, 2),
-        discharge_port_charges=round(discharge_port_charges, 2),
-        port_charges=round(port_charges, 2),
-        insurance=round(insurance, 2),
-        cost_per_voyage=round(cost_per_voyage, 2),
-        total_landed_cost=round(total_landed_cost, 2),
-        landed_cost_per_mt=round(landed_cost_per_mt, 2),
+        freight_cost=freight_cost_r,
+        load_port_charges=load_port_charges_r,
+        discharge_port_charges=discharge_port_charges_r,
+        port_charges=port_charges,
+        insurance=insurance,
+        cost_per_voyage=cost_per_voyage,
+        total_landed_cost=round(cost_per_voyage * num_voyages, 2),
+        landed_cost_per_mt=(
+            round(cost_per_voyage * num_voyages / quantity_mt, 2)
+            if quantity_mt > 0
+            else 0.0
+        ),
         bunker_cost=round(bunker_cost, 2),
         canal_toll=round(canal_toll, 2),
         commission=round(commission, 2),

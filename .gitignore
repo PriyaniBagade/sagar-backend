@@ -38,6 +38,6 @@ Thumbs.db
 *.log
 
 # Prisma
-prisma/migrations/
+prisma/
 
 data

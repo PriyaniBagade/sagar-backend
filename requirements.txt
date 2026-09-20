@@ -32,7 +32,6 @@ pdfminer.six==20260107
 pdfplumber==0.11.10
 pillow==12.3.0
 pluggy==1.6.0
-prisma==0.15.0
 psycopg2-binary==2.9.12
 pycparser==3.0
 pydantic==2.13.5

@@ -37,7 +37,4 @@ Thumbs.db
 # Logs
 *.log
 
-# Prisma
-prisma/
-
 data

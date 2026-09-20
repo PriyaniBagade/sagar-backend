@@ -151,24 +151,9 @@ def _compute_drivers(
         return []
 
     try:
-        import shap
-
-        # Set a timeout on SHAP computation — if it takes >5s, bail out
-        import signal
-
-        def timeout_handler(signum, frame):
-            raise TimeoutError("SHAP computation exceeded 5 seconds")
-
-        # Note: signal.alarm() only works on Unix. On Windows, SHAP may still be slow.
-        # We'll just let it run but log a warning if it's slow.
-
-        explainer = shap.TreeExplainer(model)
-        shap_values = explainer.shap_values(X)
-        if isinstance(shap_values, list):
-            shap_values = shap_values[0]
-        shap_row = np.array(shap_values).reshape(
-            -1
-        )  # force 1D regardless of shap version
+        # Use LightGBM's built-in pred_contrib — no shap/numba/llvmlite needed
+        contribs = np.array(model.predict(X, pred_contrib=True))
+        shap_row = contribs[0][:-1]  # last value is the bias term, skip it
         col_names = list(X.columns)
         shap_map = dict(zip(col_names, shap_row))
 
@@ -187,11 +172,8 @@ def _compute_drivers(
         drivers.sort(key=lambda d: abs(d["contribution"]), reverse=True)
         return drivers
 
-    except TimeoutError:
-        log.warning("SHAP computation timeout for %s — skipping drivers", idx)
-        return []
     except Exception as e:
-        log.warning("SHAP computation failed: %s", e, exc_info=True)
+        log.warning("pred_contrib computation failed: %s", e, exc_info=True)
         return []
 
 
@@ -329,7 +311,7 @@ def get_forecast(idx: str, db: Session, days: int = 1) -> dict | list[dict]:
             )
 
         point, lower, upper, drivers = _forecast_one(
-            model, X_current, idx, compute_shap=False
+            model, X_current, idx, compute_shap=True
         )
 
         # widen confidence band for further-out forecasts (uncertainty grows)
